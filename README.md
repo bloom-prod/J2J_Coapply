@@ -1,4 +1,4 @@
-# 🌿 bloom tracker (Next.js)
+# 🌿 bloom tracker
 
 A community job-application tracker. Each person tracks their own applications; everyone
 shares one community garden with pooled stats, charts, a leaderboard, and a live activity feed.
