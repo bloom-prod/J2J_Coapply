@@ -2,8 +2,19 @@
 
 import { useMemo, useState } from "react";
 import { STATUSES, type Job } from "@/lib/types";
-import { fmtMonth, classifyRole } from "@/lib/job-utils";
+import { classifyRole } from "@/lib/job-utils";
 import { useDarkMode } from "@/hooks/use-dark-mode";
+
+function weekMonday(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
+function fmtWeekLabel(iso: string): string {
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 
 const FUNNEL_STAGES = ["Applied", "Phone Screen", "Interview", "Offer"] as const;
 const STAGE_ORDER: Record<string, number> = { Applied: 0, "Phone Screen": 1, Interview: 2, Offer: 3 };
@@ -53,8 +64,20 @@ export function InsightsTab({ jobs }: { jobs: Job[] }) {
     const topRoles = Object.entries(rc).sort((a, b) => b[1] - a[1]).slice(0, 6);
     const maxR = Math.max(1, ...topRoles.map((x) => x[1]));
     const months = Object.entries(mc).sort((a, b) => (a[0] > b[0] ? 1 : -1)).slice(-8);
-    const maxM = Math.max(1, ...months.map((x) => x[1]));
     const t = jobs.length;
+
+    // Weekly volume — last 16 weeks
+    const wc: Record<string, number> = {};
+    jobs.forEach((j) => { if (j.date) { const m = weekMonday(j.date); wc[m] = (wc[m] || 0) + 1; } });
+    const todayW = new Date(); todayW.setHours(0, 0, 0, 0);
+    const thisMonday = weekMonday(todayW.toISOString().slice(0, 10));
+    const weeks: { date: string; count: number }[] = [];
+    for (let i = 15; i >= 0; i--) {
+      const d = new Date(thisMonday + "T00:00:00"); d.setDate(d.getDate() - i * 7);
+      const iso = d.toISOString().slice(0, 10);
+      weeks.push({ date: iso, count: wc[iso] || 0 });
+    }
+    const maxW = Math.max(1, ...weeks.map((x) => x.count));
 
     // Personal funnel: how many reached at least each stage
     const funnelReached = FUNNEL_STAGES.map((s) =>
@@ -86,7 +109,8 @@ export function InsightsTab({ jobs }: { jobs: Job[] }) {
       heatGrid.push(week);
     }
     return {
-      sc, maxS, topCo, maxC, topLoc, maxL, topRoles, maxR, months, maxM,
+      sc, maxS, topCo, maxC, topLoc, maxL, topRoles, maxR,
+      weeks, maxW,
       funnelReached,
       heatGrid,
       conv: t ? Math.round((jobs.filter((j) => ["Interview", "Offer"].includes(j.status)).length / t) * 100) : 0,
@@ -219,26 +243,32 @@ export function InsightsTab({ jobs }: { jobs: Job[] }) {
           : noData}
       </div>
 
-      <div className="ic wide">
-        <div className="it">Monthly application volume</div>
-        {data.months.length ? (
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 90, paddingTop: 8 }}>
-            {data.months.map(([m, n]) => (
-              <div key={m} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flex: 1 }}>
-                <div style={{ fontSize: 11, color: "var(--text-light)", fontWeight: 500 }}>{n}</div>
-                <div style={{ background: "var(--pink-200)", borderRadius: "4px 4px 0 0", width: "100%", height: Math.round((n / data.maxM) * 64), minHeight: 4 }} />
-                <div style={{ fontSize: 10, color: "var(--text-light)" }}>{fmtMonth(m)}</div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div style={{ color: "var(--text-light)", fontSize: 13 }}>Add applications with dates to see volume trends.</div>
-        )}
-      </div>
+      <div style={{ gridColumn: "1/-1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <div className="ic">
+          <div className="it">Weekly application volume</div>
+          {data.weeks.some((w) => w.count > 0) ? (
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 90, paddingTop: 8 }}>
+              {data.weeks.map(({ date, count }) => {
+                const day = parseInt(date.slice(8, 10));
+                const showLabel = day <= 7;
+                return (
+                  <div key={date} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, flex: 1 }}>
+                    {count > 0 && <div style={{ fontSize: 10, color: "var(--text-light)", fontWeight: 500 }}>{count}</div>}
+                    {count === 0 && <div style={{ fontSize: 10 }}>&nbsp;</div>}
+                    <div style={{ background: "var(--pink-200)", borderRadius: "3px 3px 0 0", width: "100%", height: Math.round((count / data.maxW) * 60), minHeight: count > 0 ? 3 : 0 }} />
+                    <div style={{ fontSize: 9, color: "var(--text-light)", whiteSpace: "nowrap" }}>{showLabel ? fmtWeekLabel(date) : ""}</div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ color: "var(--text-light)", fontSize: 13 }}>Add applications with dates to see weekly volume.</div>
+          )}
+        </div>
 
-      <div className="ic wide">
-        <div className="it">Your conversion funnel</div>
-        {jobs.length ? (
+        <div className="ic">
+          <div className="it">Your conversion funnel</div>
+          {jobs.length ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 4 }}>
             {FUNNEL_STAGES.map((s, i) => {
               const n = data.funnelReached[i];
@@ -255,7 +285,8 @@ export function InsightsTab({ jobs }: { jobs: Job[] }) {
               );
             })}
           </div>
-        ) : noData}
+          ) : noData}
+        </div>
       </div>
 
     </div>

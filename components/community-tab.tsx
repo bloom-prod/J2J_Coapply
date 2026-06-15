@@ -18,13 +18,48 @@ import {
 } from "recharts";
 import { auth } from "@/lib/firebase";
 import { STATUSES, type CommunityStats, type FeedEvent, type Job } from "@/lib/types";
-import { fmtMonth, timeAgo, classifyRole } from "@/lib/job-utils";
+import { timeAgo, classifyRole } from "@/lib/job-utils";
+import { useDarkMode } from "@/hooks/use-dark-mode";
 
 const STATUS_COLORS = ["#185FA5", "#6B9E6B", "#D4537E", "#3B6D11", "#A32D2D", "#9E9088", "#854F0B"];
-const AXIS_LIGHT = { fontSize: 11, fill: "#9E9088" };
-const AXIS_MID = { fontSize: 11, fill: "#6B5E52" };
+const USER_COLORS = ["#E07BA0","#7BB87B","#78AEDE","#DDB060","#A87BD4","#5FC5C5","#E8895A"];
 
-function Donut({ data, colors }: { data: { name: string; value: number }[]; colors: string[] }) {
+function weekMonday(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+function fmtWeekLabel(iso: string): string {
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function chartAxisStyle(dark: boolean) {
+  return { fontSize: 11, fill: dark ? "#A89EC0" : "#9E9088" };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+interface TipProps { active?: boolean; payload?: any[]; label?: string; dark: boolean }
+function ChartTip({ active, payload, label, dark }: TipProps) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div style={{
+      background: dark ? "#2D2A3C" : "#1a1a1a",
+      color: dark ? "#F0EBF8" : "#fff",
+      fontSize: 12, borderRadius: 6,
+      padding: "5px 9px",
+      boxShadow: "0 2px 8px rgba(0,0,0,.35)",
+      whiteSpace: "nowrap",
+    }}>
+      {label && <div style={{ opacity: 0.7, marginBottom: 2 }}>{label}</div>}
+      {payload.map((p, i) => (
+        <div key={i}><strong>{p.value}</strong>{payload.length > 1 ? ` ${p.name}` : ""}</div>
+      ))}
+    </div>
+  );
+}
+
+function Donut({ data, colors, dark }: { data: { name: string; value: number }[]; colors: string[]; dark: boolean }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <PieChart>
@@ -33,22 +68,38 @@ function Donut({ data, colors }: { data: { name: string; value: number }[]; colo
             <Cell key={i} fill={colors[i % colors.length]} stroke="none" />
           ))}
         </Pie>
-        <Tooltip />
-        <Legend layout="vertical" align="right" verticalAlign="middle" wrapperStyle={{ fontSize: 11, color: "#6B5E52" }} />
+        <Tooltip content={(p) => <ChartTip {...p} dark={dark} />} />
+        <Legend layout="vertical" align="right" verticalAlign="middle" wrapperStyle={{ fontSize: 11, color: dark ? "#A89EC0" : "#6B5E52" }} />
       </PieChart>
     </ResponsiveContainer>
   );
 }
 
-function HBar({ data, fill }: { data: { name: string; value: number }[]; fill: string }) {
+function HBar({ data, fill, dark }: { data: { name: string; value: number }[]; fill: string; dark: boolean }) {
+  const axis = chartAxisStyle(dark);
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart layout="vertical" data={data} margin={{ left: 8, right: 12, top: 4, bottom: 4 }}>
-        <CartesianGrid horizontal={false} stroke="#F0F5F0" />
-        <XAxis type="number" allowDecimals={false} tick={AXIS_LIGHT} />
-        <YAxis type="category" dataKey="name" width={96} tick={AXIS_MID} />
-        <Tooltip cursor={{ fill: "rgba(212,83,126,.06)" }} />
+        <CartesianGrid horizontal={false} stroke={dark ? "#2E2B3C" : "#F0F5F0"} />
+        <XAxis type="number" allowDecimals={false} tick={axis} />
+        <YAxis type="category" dataKey="name" width={96} tick={axis} />
+        <Tooltip cursor={{ fill: dark ? "rgba(224,123,160,.08)" : "rgba(212,83,126,.06)" }} content={(p) => <ChartTip {...p} dark={dark} />} />
         <Bar dataKey="value" fill={fill} radius={[0, 6, 6, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+function VBar({ data, fill, dark }: { data: { name: string; value: number }[]; fill: string; dark: boolean }) {
+  const axis = chartAxisStyle(dark);
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} margin={{ left: 0, right: 8, top: 4, bottom: 4 }}>
+        <CartesianGrid vertical={false} stroke={dark ? "#2E2B3C" : "#F0F5F0"} />
+        <XAxis dataKey="name" tick={axis} />
+        <YAxis allowDecimals={false} tick={axis} />
+        <Tooltip cursor={{ fill: dark ? "rgba(224,123,160,.08)" : "rgba(212,83,126,.06)" }} content={(p) => <ChartTip {...p} dark={dark} />} />
+        <Bar dataKey="value" fill={fill} radius={[6, 6, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -80,17 +131,9 @@ export function CommunityTab({ allJobs, feed }: { allJobs: Job[]; feed: FeedEven
     const sc: Record<string, number> = {};
     STATUSES.forEach((s) => (sc[s] = 0));
     const cc: Record<string, number> = {};
-    const mc: Record<string, number> = {};
-    const rc: Record<string, number> = {};
     allJobs.forEach((j) => {
       sc[j.status] = (sc[j.status] || 0) + 1;
       if (j.company) cc[j.company] = (cc[j.company] || 0) + 1;
-      if (j.date) {
-        const m = j.date.slice(0, 7);
-        if (/^\d{4}-\d{2}$/.test(m)) mc[m] = (mc[m] || 0) + 1;
-      }
-      const cat = j.roleCategory || classifyRole(j.role);
-      if (cat) rc[cat] = (rc[cat] || 0) + 1;
     });
 
     // Funnel: how many apps reached at least each stage (excluding "Applied")
@@ -101,19 +144,57 @@ export function CommunityTab({ allJobs, feed }: { allJobs: Job[]; feed: FeedEven
       if (o !== undefined) for (let i = 0; i <= o; i++) funnelReached[i]++;
     });
 
+    const weeklyUsers = [...new Set(allJobs.map((j) => j.ownerName || "Unknown"))];
+
+    // Weekly volume per user — last 12 weeks
+    const todayW = new Date(); todayW.setHours(0, 0, 0, 0);
+    const thisMon = weekMonday(todayW.toISOString().slice(0, 10));
+    const weekKeys: string[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(thisMon + "T00:00:00"); d.setDate(d.getDate() - i * 7);
+      weekKeys.push(d.toISOString().slice(0, 10));
+    }
+    const weeklyByUser: Record<string, Record<string, number>> = {};
+    allJobs.forEach((j) => {
+      if (!j.date) return;
+      const w = weekMonday(j.date);
+      if (!weekKeys.includes(w)) return;
+      const name = j.ownerName || "Unknown";
+      if (!weeklyByUser[w]) weeklyByUser[w] = {};
+      weeklyByUser[w][name] = (weeklyByUser[w][name] || 0) + 1;
+    });
+    const weeklyData = weekKeys.map((iso) => {
+      const obj: Record<string, string | number> = { week: fmtWeekLabel(iso) };
+      weeklyUsers.forEach((name) => { obj[name] = weeklyByUser[iso]?.[name] || 0; });
+      return obj;
+    });
+
+    // Role categories stacked by user
+    const roleCatByUser: Record<string, Record<string, number>> = {};
+    allJobs.forEach((j) => {
+      const cat = j.roleCategory || classifyRole(j.role);
+      if (!cat) return;
+      const name = j.ownerName || "Unknown";
+      if (!roleCatByUser[cat]) roleCatByUser[cat] = {};
+      roleCatByUser[cat][name] = (roleCatByUser[cat][name] || 0) + 1;
+    });
+    const roleCatUsers = [...new Set(
+      allJobs.filter((j) => j.roleCategory || classifyRole(j.role)).map((j) => j.ownerName || "Unknown")
+    )];
+    const roleCatData = Object.entries(roleCatByUser)
+      .sort((a, b) => Object.values(b[1]).reduce((s, n) => s + n, 0) - Object.values(a[1]).reduce((s, n) => s + n, 0))
+      .slice(0, 8)
+      .map(([cat, byUser]) => {
+        const obj: Record<string, string | number> = { cat };
+        roleCatUsers.forEach((name) => { obj[name] = byUser[name] || 0; });
+        return obj;
+      });
+
     return {
       status: STATUSES.map((s) => ({ name: s, value: sc[s] })),
-      outcome: [
-        { name: "In progress", value: sc["Applied"] + sc["Phone Screen"] + sc["Interview"] },
-        { name: "Offer", value: sc["Offer"] },
-        { name: "Rejected", value: sc["Rejected"] },
-        { name: "Ghosted", value: sc["Ghosted"] },
-        { name: "Withdrawn", value: sc["Withdrawn"] },
-      ],
       funnel: ["Phone Screen", "Interview", "Offer"].map((s, i) => ({ name: s, value: funnelReached[i] })),
       companies: Object.entries(cc).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, value]) => ({ name, value })),
-      roles: Object.entries(rc).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, value]) => ({ name, value })),
-      months: Object.entries(mc).sort((a, b) => (a[0] > b[0] ? 1 : -1)).map(([m, value]) => ({ name: fmtMonth(m), value })),
+      weeklyData, weeklyUsers, roleCatData, roleCatUsers,
     };
   }, [allJobs]);
 
@@ -131,6 +212,7 @@ export function CommunityTab({ allJobs, feed }: { allJobs: Job[]; feed: FeedEven
     return Object.values(by).sort((a, b) => b.offers - a.offers || b.interviews - a.interviews || b.total - a.total);
   }, [allJobs]);
 
+  const dark = useDarkMode();
   const myUid = auth.currentUser?.uid;
   const medal = (i: number) => (i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1);
 
@@ -159,25 +241,49 @@ export function CommunityTab({ allJobs, feed }: { allJobs: Job[]; feed: FeedEven
         {card("r", stats ? stats.responseRate + "%" : "—", "Response rate", true)}
       </div>
 
-      <div className="comm-grid">
-        <div className="chart-card"><div className="it">Status mix (everyone)</div><div className="chart-wrap"><Donut data={charts.status} colors={STATUS_COLORS} /></div></div>
-        <div className="chart-card"><div className="it">Interview funnel</div><div className="chart-wrap"><HBar data={charts.funnel} fill="#185FA5" /></div></div>
-        <div className="chart-card"><div className="it">Most-applied companies</div><div className="chart-wrap"><HBar data={charts.companies} fill="#F2AECF" /></div></div>
-        <div className="chart-card"><div className="it">Top role categories</div><div className="chart-wrap"><HBar data={charts.roles} fill="#A8C9A8" /></div></div>
-        <div className="chart-card"><div className="it">Outcomes</div><div className="chart-wrap"><Donut data={charts.outcome} colors={["#A8C9A8", "#3B6D11", "#A32D2D", "#9E9088", "#854F0B"]} /></div></div>
+      <div className="comm-grid" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {/* Row 1: three equal charts */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+          <div className="chart-card"><div className="it">Status mix (everyone)</div><div className="chart-wrap"><Donut data={charts.status} colors={STATUS_COLORS} dark={dark} /></div></div>
+          <div className="chart-card"><div className="it">Interview funnel</div><div className="chart-wrap"><VBar data={charts.funnel} fill={dark ? "#78AEDE" : "#185FA5"} dark={dark} /></div></div>
+          <div className="chart-card"><div className="it">Most-applied companies</div><div className="chart-wrap"><HBar data={charts.companies} fill={dark ? "#E07BA0" : "#F2AECF"} dark={dark} /></div></div>
+        </div>
 
-        <div className="chart-card wide">
-          <div className="it">Monthly application volume</div>
-          <div className="chart-wrap">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={charts.months} margin={{ left: 0, right: 12, top: 6, bottom: 4 }}>
-                <CartesianGrid stroke="#F0F5F0" vertical={false} />
-                <XAxis dataKey="name" tick={AXIS_LIGHT} />
-                <YAxis allowDecimals={false} tick={AXIS_LIGHT} />
-                <Tooltip />
-                <Area dataKey="value" type="monotone" stroke="#D4537E" strokeWidth={2} fill="rgba(212,83,126,.18)" />
-              </AreaChart>
-            </ResponsiveContainer>
+        {/* Row 2: two equal charts */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div className="chart-card">
+            <div className="it">Applications by role category</div>
+            <div className="chart-wrap">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={charts.roleCatData} margin={{ left: 0, right: 8, top: 4, bottom: 40 }}>
+                  <CartesianGrid vertical={false} stroke={dark ? "#2E2B3C" : "#F0F5F0"} />
+                  <XAxis dataKey="cat" tick={{ fontSize: 10, fill: dark ? "#A89EC0" : "#9E9088" }} interval={0} angle={-30} textAnchor="end" tickFormatter={(v: string) => v.length > 12 ? v.slice(0, 11) + "…" : v} />
+                  <YAxis allowDecimals={false} tick={chartAxisStyle(dark)} />
+                  <Tooltip content={(p) => <ChartTip {...p} dark={dark} />} />
+                  <Legend verticalAlign="top" align="right" wrapperStyle={{ fontSize: 11, color: dark ? "#A89EC0" : "#6B5E52", paddingBottom: 4 }} />
+                  {charts.roleCatUsers.map((name, i) => (
+                    <Bar key={name} dataKey={name} stackId="s" fill={USER_COLORS[i % USER_COLORS.length]} radius={i === charts.roleCatUsers.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="chart-card">
+            <div className="it">Weekly application volume</div>
+            <div className="chart-wrap">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={charts.weeklyData} margin={{ left: 0, right: 12, top: 6, bottom: 4 }}>
+                  <CartesianGrid stroke={dark ? "#2E2B3C" : "#F0F5F0"} vertical={false} />
+                  <XAxis dataKey="week" tick={chartAxisStyle(dark)} />
+                  <YAxis allowDecimals={false} tick={chartAxisStyle(dark)} />
+                  <Tooltip content={(p) => <ChartTip {...p} dark={dark} />} />
+                  {charts.weeklyUsers.map((name, i) => (
+                    <Area key={name} dataKey={name} type="monotone" stroke={USER_COLORS[i % USER_COLORS.length]} strokeWidth={2} fill={`${USER_COLORS[i % USER_COLORS.length]}22`} stackId="1" />
+                  ))}
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
 
