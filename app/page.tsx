@@ -9,6 +9,7 @@ import { TimelineTab } from "@/components/timeline-tab";
 import { ForestTab } from "@/components/forest-tab";
 import { CommunityTab } from "@/components/community-tab";
 import { ApplicationDialog } from "@/components/application-dialog";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import type { Job } from "@/lib/types";
@@ -20,7 +21,7 @@ const CSV_HEADERS = [
 
 function FullSpinner() {
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--cream)" }}>
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "hsl(var(--background))" }}>
       <div style={{ textAlign: "center" }}>
         <div className="spinner" />
         <div style={{ fontSize: 14, color: "var(--text-mid)" }}>Loading…</div>
@@ -93,6 +94,7 @@ export default function Page() {
           </div>
         </div>
         <div className="topbar-right">
+          <ThemeToggle />
           <Button variant="outline" size="sm" className="rounded-full" onClick={exportCSV}>
             <i className="ti ti-download" /> Export CSV
           </Button>

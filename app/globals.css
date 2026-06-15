@@ -10,6 +10,7 @@
     --cream:#FDFAF7;--text-dark:#2C2416;--text-mid:#6B5E52;--text-light:#9E9088;
     --danger:#A32D2D;--danger-bg:#FCEBEB;--success:#3B6D11;--success-bg:#EAF3DE;
     --info:#185FA5;--info-bg:#EBF3FB;--warning:#854F0B;--warning-bg:#FAEEDA;
+    --card-bg:#FFFFFF;--table-bg:#FFFFFF;
 
     /* ---- shadcn tokens (HSL), mapped to the bloom palette ---- */
     --background: 30 56% 98%;        /* cream */
@@ -35,6 +36,42 @@
 
     /* max width of centered page content (bars stay full-bleed) */
     --content-max: 1440px;
+  }
+
+  .dark {
+    /* ---- bloom dark palette ---- */
+    /* Neutral-dark base: near-black with the faintest purple suggestion so  */
+    /* pink/sage accents read warm without the background competing with them */
+    --pink-50:#1E1523;--pink-100:#2D1E30;--pink-200:#6B3A56;--pink-400:#E07BA0;--pink-600:#F0A8C0;
+    --sage-50:#111D14;--sage-100:#1B2E1E;--sage-200:#3D6B40;--sage-400:#7BB87B;--sage-600:#A8D4A8;
+    --cream:#0D0C11;--text-dark:#F0EBF8;--text-mid:#A89EC0;--text-light:#6B6380;
+    --danger:#F08080;--danger-bg:#3D1A1A;--success:#7BC47B;--success-bg:#1A3D1A;
+    --info:#78AEDE;--info-bg:#162340;--warning:#DDB060;--warning-bg:#3D2D0A;
+    --card-bg:#191720;--table-bg:#191720;
+
+    /* ---- shadcn tokens ---- */
+    /* Background #0D0C11 — near-neutral, imperceptibly purple-tinted         */
+    /* Card #191720      — one clear step above background                    */
+    /* Border #2E2B3C    — visible and crisp, not blown out                   */
+    --background: 258 15% 6%;
+    --foreground: 276 40% 95%;
+    --card: 256 16% 11%;
+    --card-foreground: 276 40% 95%;
+    --popover: 256 18% 14%;
+    --popover-foreground: 276 40% 95%;
+    --primary: 340 65% 68%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 130 18% 14%;
+    --secondary-foreground: 120 27% 60%;
+    --muted: 256 12% 16%;
+    --muted-foreground: 270 14% 62%;
+    --accent: 338 20% 19%;
+    --accent-foreground: 335 60% 78%;
+    --destructive: 0 68% 62%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 256 14% 21%;
+    --input: 256 14% 21%;
+    --ring: 340 65% 68%;
   }
 }
 
@@ -68,7 +105,7 @@
 @keyframes spin{to{transform:rotate(360deg)}}
 
 .stats-row{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px;}
-.stat-card{background:white;border-radius:14px;padding:14px 16px;border:1px solid var(--pink-100);text-align:center;}
+.stat-card{background:var(--card-bg);border-radius:14px;padding:14px 16px;border:1px solid var(--pink-100);text-align:center;}
 .stat-card.sage{border-color:var(--sage-100);}
 .stat-num{font-size:26px;font-weight:700;color:var(--pink-600);line-height:1;}
 .stat-card.sage .stat-num{color:var(--sage-600);}
@@ -77,11 +114,11 @@
 .sec-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
 .sec-title{font-size:14px;font-weight:600;color:var(--text-dark);}
 .filters{display:flex;gap:7px;margin-bottom:12px;flex-wrap:wrap;}
-.chip{padding:4px 13px;border-radius:20px;font-size:12px;cursor:pointer;border:1px solid var(--pink-200);color:var(--text-mid);background:white;transition:all .15s;user-select:none;}
+.chip{padding:4px 13px;border-radius:20px;font-size:12px;cursor:pointer;border:1px solid var(--pink-200);color:var(--text-mid);background:var(--card-bg);transition:all .15s;user-select:none;}
 .chip.active{background:var(--pink-100);border-color:var(--pink-400);color:var(--pink-600);font-weight:600;}
 .chip:not(.active):hover{background:var(--pink-50);color:var(--pink-600);}
 
-.table-wrap{overflow-x:auto;border-radius:14px;border:1px solid var(--pink-100);background:white;box-shadow:0 1px 6px rgba(212,83,126,.05);}
+.table-wrap{overflow-x:auto;border-radius:14px;border:1px solid var(--pink-100);background:var(--table-bg);box-shadow:0 1px 6px rgba(212,83,126,.05);}
 table.bloom{width:100%;border-collapse:collapse;font-size:13px;}
 table.bloom th{background:var(--pink-50);padding:10px 13px;text-align:left;font-weight:600;font-size:11px;color:var(--text-mid);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--pink-100);white-space:nowrap;cursor:pointer;user-select:none;}
 table.bloom th:hover{color:var(--pink-600);}
@@ -121,7 +158,7 @@ table.bloom tr:hover td{background:var(--pink-50);}
 
 /* insights */
 .ig{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
-.ic{background:white;border-radius:14px;padding:18px;border:1px solid var(--sage-100);}
+.ic{background:var(--card-bg);border-radius:14px;padding:18px;border:1px solid var(--sage-100);}
 .ic.wide{grid-column:1/-1;}
 .ic.half{grid-column:span 2;}
 .it{font-size:11px;font-weight:700;color:var(--sage-600);text-transform:uppercase;letter-spacing:.6px;margin-bottom:14px;}
@@ -136,10 +173,10 @@ table.bloom tr:hover td{background:var(--pink-50);}
 .ml{font-size:11px;color:var(--text-light);}
 
 /* timeline */
-.tl-list{background:white;border-radius:14px;border:1px solid var(--pink-100);padding:20px;}
+.tl-list{background:var(--card-bg);border-radius:14px;border:1px solid var(--pink-100);padding:20px;}
 .tl-row{display:flex;align-items:flex-start;gap:14px;margin-bottom:16px;}
 .tl-dc{display:flex;flex-direction:column;align-items:center;flex-shrink:0;}
-.tl-dot{width:12px;height:12px;border-radius:50%;background:white;border:2.5px solid var(--pink-400);flex-shrink:0;}
+.tl-dot{width:12px;height:12px;border-radius:50%;background:var(--card-bg);border:2.5px solid var(--pink-400);flex-shrink:0;}
 .tl-line{width:2px;background:var(--pink-100);flex:1;min-height:20px;margin-top:3px;}
 .tl-co{font-size:14px;font-weight:600;color:var(--text-dark);}
 .tl-role{font-size:13px;color:var(--text-mid);}
@@ -151,7 +188,7 @@ table.bloom tr:hover td{background:var(--pink-50);}
 .forest-hd{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;}
 .forest-counter{font-size:13px;color:var(--text-mid);margin-top:4px;}
 .forest-counter strong{color:var(--pink-600);}
-.forest-bg{background:white;border-radius:16px;border:1px solid var(--sage-100);padding:24px 28px 16px;}
+.forest-bg{background:var(--card-bg);border-radius:16px;border:1px solid var(--sage-100);padding:24px 28px 16px;}
 .forest-scroll{overflow-x:auto;overflow-y:visible;padding-bottom:4px;}
 .forest-row{display:flex;gap:0;align-items:flex-end;min-width:max-content;padding:0 4px;}
 .tree-group{display:flex;flex-direction:column;align-items:center;cursor:default;transition:transform .2s;}
@@ -163,7 +200,7 @@ table.bloom tr:hover td{background:var(--pink-50);}
 
 /* community */
 .comm-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-.chart-card,.feed-card{background:white;border-radius:14px;padding:18px;border:1px solid var(--sage-100);}
+.chart-card,.feed-card{background:var(--card-bg);border-radius:14px;padding:18px;border:1px solid var(--sage-100);}
 .chart-card.wide,.feed-card{grid-column:1/-1;}
 .chart-wrap{position:relative;height:240px;}
 .feed-list{max-height:380px;overflow-y:auto;padding-right:4px;}
@@ -194,13 +231,53 @@ table.bloom tr:hover td{background:var(--pink-50);}
 .lb-empty{text-align:center;color:var(--text-light);font-size:13px;font-style:italic;padding:24px 10px;}
 
 /* auth card */
-.auth-card{background:white;border-radius:24px;border:1px solid var(--pink-200);padding:40px;width:440px;max-width:92vw;box-shadow:0 8px 48px rgba(212,83,126,.1);}
+.auth-card{background:var(--card-bg);border-radius:24px;border:1px solid var(--pink-200);padding:40px;width:440px;max-width:92vw;box-shadow:0 8px 48px rgba(212,83,126,.1);}
 .auth-logo{display:flex;align-items:center;gap:12px;margin-bottom:24px;}
 .auth-icon{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,var(--pink-200),var(--sage-200));display:flex;align-items:center;justify-content:center;font-size:22px;}
 .auth-logo-text{font-size:22px;font-weight:700;color:var(--pink-600);}
 .auth-logo-sub{font-size:12px;color:var(--text-light);}
 .auth-error{font-size:12px;color:var(--danger);min-height:16px;margin:6px 0;}
 .auth-hint{font-size:11px;color:var(--text-light);margin-top:18px;line-height:1.7;text-align:center;}
+
+/* =========================================================
+   Dark mode overrides for bespoke classes
+   ========================================================= */
+.dark .topbar{background:var(--cream);border-bottom-color:var(--pink-100);}
+.dark .nav{background:var(--cream);border-bottom-color:var(--pink-100);}
+.dark .nav-tab.active,.dark .nav-tab[data-state="active"]{background:#2A1E2E;color:var(--pink-400);}
+.dark .user-chip{background:var(--sage-50);border-color:var(--sage-100);color:var(--sage-400);}
+
+/* stat-card, chip, table-wrap, ic, tl-list, tl-dot, forest-bg, chart-card,
+   feed-card, auth-card all now use var(--card-bg) in their base rule so
+   dark-mode gets the right surface for free via the .dark palette override. */
+
+.dark .stat-card.sage{border-color:var(--sage-100);}
+
+.dark .chip.active{background:var(--pink-50);border-color:var(--pink-400);color:var(--pink-400);}
+.dark .chip:not(.active):hover{background:var(--pink-50);color:var(--pink-400);}
+
+.dark table.bloom th{background:var(--pink-50);border-bottom-color:var(--pink-100);}
+.dark table.bloom td{border-bottom-color:var(--sage-50);}
+.dark table.bloom tr:hover td{background:var(--pink-50);}
+
+.dark .abtn:hover{background:var(--pink-50);color:var(--pink-400);}
+.dark .star-btn.on{color:var(--pink-200);}
+.dark .star-btn:hover{color:var(--pink-400);}
+
+.dark .bt{background:var(--sage-50);}
+
+.dark .feed-item{border-bottom-color:var(--sage-50);}
+.dark .lb-table th{border-bottom-color:var(--sage-100);}
+.dark .lb-table td{border-bottom-color:var(--sage-50);}
+.dark .lb-row-me{background:var(--pink-50);}
+
+.dark .s-Applied{background:var(--info-bg);color:var(--info);}
+.dark .s-Phone-Screen{background:var(--sage-50);color:var(--sage-400);}
+.dark .s-Interview{background:var(--pink-50);color:var(--pink-400);}
+.dark .s-Offer{background:var(--success-bg);color:var(--success);}
+.dark .s-Rejected{background:var(--danger-bg);color:var(--danger);}
+.dark .s-Ghosted{background:#1E1E18;color:#9E9E88;}
+.dark .s-Withdrawn{background:var(--warning-bg);color:var(--warning);}
 
 /* responsive */
 @media (max-width:1024px){

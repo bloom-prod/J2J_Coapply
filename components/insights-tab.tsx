@@ -3,17 +3,24 @@
 import { useMemo, useState } from "react";
 import { STATUSES, type Job } from "@/lib/types";
 import { fmtMonth, classifyRole } from "@/lib/job-utils";
+import { useDarkMode } from "@/hooks/use-dark-mode";
 
 const FUNNEL_STAGES = ["Applied", "Phone Screen", "Interview", "Offer"] as const;
 const STAGE_ORDER: Record<string, number> = { Applied: 0, "Phone Screen": 1, Interview: 2, Offer: 3 };
 
-// 5-level GitHub-style heat color scale — absolute thresholds so 1 app is always lightest
-function heatColor(count: number): string {
-  if (count === 0) return "#EDF2ED";
-  if (count <= 2) return "#F9D0E3";
-  if (count <= 4) return "#F2AECF";
-  if (count <= 7) return "#D4537E";
-  return "#A32059";
+const HEAT_LIGHT = ["#EDF2ED", "#F9D0E3", "#F2AECF", "#D4537E", "#A32059"];
+const HEAT_DARK  = ["#1E1D26", "#3D2135", "#6B3A56", "#E07BA0", "#F0A8C0"];
+
+const FUNNEL_LIGHT = ["#185FA5", "#6B9E6B", "#D4537E", "#3B6D11"];
+const FUNNEL_DARK  = ["#78AEDE", "#7BB87B", "#E07BA0", "#7BC47B"];
+
+function heatColor(count: number, dark: boolean): string {
+  const scale = dark ? HEAT_DARK : HEAT_LIGHT;
+  if (count === 0) return scale[0];
+  if (count <= 2)  return scale[1];
+  if (count <= 4)  return scale[2];
+  if (count <= 7)  return scale[3];
+  return scale[4];
 }
 
 export function InsightsTab({ jobs }: { jobs: Job[] }) {
@@ -90,6 +97,7 @@ export function InsightsTab({ jobs }: { jobs: Job[] }) {
   }, [jobs]);
 
   const [heatTip, setHeatTip] = useState<{ date: string; count: number; x: number; y: number } | null>(null);
+  const dark = useDarkMode();
 
   const noData = <div style={{ color: "var(--text-light)", fontSize: 13 }}>No data yet</div>;
 
@@ -149,9 +157,11 @@ export function InsightsTab({ jobs }: { jobs: Job[] }) {
         {heatTip && (
           <div style={{
             position: "fixed", left: heatTip.x + 10, top: heatTip.y - 36,
-            background: "#1a1a1a", color: "#fff", fontSize: 12, borderRadius: 6,
+            background: dark ? "#2D2A3C" : "#1a1a1a",
+            color: dark ? "#F0EBF8" : "#fff",
+            fontSize: 12, borderRadius: 6,
             padding: "5px 9px", pointerEvents: "none", zIndex: 9999, whiteSpace: "nowrap",
-            boxShadow: "0 2px 8px rgba(0,0,0,.25)",
+            boxShadow: "0 2px 8px rgba(0,0,0,.35)",
           }}>
             <strong>{heatTip.count} app{heatTip.count !== 1 ? "s" : ""}</strong>
             <span style={{ opacity: 0.7, marginLeft: 6 }}>{heatTip.date}</span>
@@ -176,7 +186,7 @@ export function InsightsTab({ jobs }: { jobs: Job[] }) {
                       onMouseMove={day.count >= 0 ? (e) => setHeatTip((t) => t ? { ...t, x: e.clientX, y: e.clientY } : null) : undefined}
                       style={{
                         width: 11, height: 11, borderRadius: 2, cursor: day.count > 0 ? "default" : undefined,
-                        background: day.count < 0 ? "transparent" : heatColor(day.count),
+                        background: day.count < 0 ? "transparent" : heatColor(day.count, dark),
                       }}
                     />
                   ))}
@@ -185,7 +195,7 @@ export function InsightsTab({ jobs }: { jobs: Job[] }) {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 8, justifyContent: "flex-end" }}>
               <span style={{ fontSize: 10, color: "var(--text-light)" }}>Less</span>
-              {["#EDF2ED", "#F9D0E3", "#F2AECF", "#D4537E", "#A32059"].map((c) => (
+              {(dark ? HEAT_DARK : HEAT_LIGHT).map((c) => (
                 <div key={c} style={{ width: 11, height: 11, borderRadius: 2, background: c }} />
               ))}
               <span style={{ fontSize: 10, color: "var(--text-light)" }}>More</span>
@@ -233,7 +243,7 @@ export function InsightsTab({ jobs }: { jobs: Job[] }) {
             {FUNNEL_STAGES.map((s, i) => {
               const n = data.funnelReached[i];
               const pct = jobs.length ? Math.round((n / jobs.length) * 100) : 0;
-              const colors = ["#185FA5", "#6B9E6B", "#D4537E", "#3B6D11"];
+              const colors = dark ? FUNNEL_DARK : FUNNEL_LIGHT;
               return (
                 <div key={s} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <div style={{ width: 96, fontSize: 12, color: "var(--text-mid)", flexShrink: 0 }}>{s}</div>
