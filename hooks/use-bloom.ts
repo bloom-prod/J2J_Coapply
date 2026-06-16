@@ -8,10 +8,14 @@ import {
 } from "firebase/auth";
 import {
   collection,
+  doc,
+  getDoc,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
   query,
+  setDoc,
   type DocumentData,
   type QueryDocumentSnapshot,
   type Timestamp,
@@ -19,6 +23,28 @@ import {
 import { toast } from "sonner";
 import { auth, db } from "@/lib/firebase";
 import type { FeedEvent, Job } from "@/lib/types";
+
+const USER_COLORS = ["#E07BA0","#7BB87B","#78AEDE","#DDB060","#A87BD4","#5FC5C5","#E8895A"];
+const NAME_COLOR_OVERRIDES: Record<string, string> = { "Shruti": "#FF69B4" }; // hot pink
+
+async function ensureUserProfile(uid: string, name: string, email: string | null) {
+  const ref = doc(db, "userProfiles", uid);
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    // Keep name overrides authoritative even for existing profiles.
+    const override = NAME_COLOR_OVERRIDES[name];
+    if (override && (snap.data() as { color?: string }).color !== override) {
+      await setDoc(ref, { color: override }, { merge: true });
+    }
+    return;
+  }
+  const allSnap = await getDocs(collection(db, "userProfiles"));
+  const usedColors = new Set(allSnap.docs.map((d) => (d.data() as { color: string }).color));
+  const color = NAME_COLOR_OVERRIDES[name]
+    ?? USER_COLORS.find((c) => !usedColors.has(c))
+    ?? USER_COLORS[allSnap.size % USER_COLORS.length];
+  await setDoc(ref, { name, color, email });
+}
 
 function tsToISO(t: unknown): string {
   try {
@@ -81,17 +107,35 @@ export function useBloom() {
   const [serverJobs, setServerJobs] = useState<Job[]>([]);
   const [feed, setFeed] = useState<FeedEvent[]>([]);
   const [pending, setPending] = useState<Pending>(EMPTY_PENDING);
+  const [userProfiles, setUserProfiles] = useState<Map<string, { name: string; color: string }> | null>(null);
   const firstSnap = useRef(true);
+
+  // ---- user profiles (colors + verification) — only subscribe once authenticated ----
+  useEffect(() => {
+    if (!user) return;
+    return onSnapshot(
+      collection(db, "userProfiles"),
+      (snap) => {
+        setUserProfiles(new Map(snap.docs.map((d) => [d.id, d.data() as { name: string; color: string }])));
+      },
+      (err) => console.error("userProfiles snapshot error", err)
+    );
+  }, [user]);
 
   // ---- auth ----
   useEffect(() => {
     return onAuthStateChanged(auth, (u) => {
       setUser(u);
       setAuthReady(true);
+      if (u) {
+        const name = u.displayName || u.email || "Someone";
+        ensureUserProfile(u.uid, name, u.email).catch(console.error);
+      }
       if (!u) {
         setServerJobs([]);
         setFeed([]);
         setPending(EMPTY_PENDING);
+        setUserProfiles(null);
         setLoading(true);
         firstSnap.current = true;
       }
@@ -268,6 +312,11 @@ export function useBloom() {
 
   const signOut = useCallback(() => fbSignOut(auth), []);
 
+  const userColors = useMemo(
+    () => new Map(userProfiles ? [...userProfiles.values()].map((p) => [p.name, p.color]) : []),
+    [userProfiles]
+  );
+
   return {
     user,
     authReady,
@@ -275,6 +324,7 @@ export function useBloom() {
     allJobs,
     myJobs,
     feed,
+    userColors,
     createJob,
     updateJob,
     deleteJob,

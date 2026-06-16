@@ -22,7 +22,7 @@ import { timeAgo, classifyRole } from "@/lib/job-utils";
 import { useDarkMode } from "@/hooks/use-dark-mode";
 
 const STATUS_COLORS = ["#185FA5", "#6B9E6B", "#D4537E", "#3B6D11", "#A32D2D", "#9E9088", "#854F0B"];
-const USER_COLORS = ["#E07BA0","#7BB87B","#78AEDE","#DDB060","#A87BD4","#5FC5C5","#E8895A"];
+const FALLBACK_COLORS = ["#E07BA0","#7BB87B","#78AEDE","#DDB060","#A87BD4","#5FC5C5","#E8895A"];
 
 function weekMonday(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
@@ -105,7 +105,8 @@ function VBar({ data, fill, dark }: { data: { name: string; value: number }[]; f
   );
 }
 
-export function CommunityTab({ allJobs, feed }: { allJobs: Job[]; feed: FeedEvent[] }) {
+export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; feed: FeedEvent[]; userColors: Map<string, string> }) {
+  const uc = (name: string, i: number) => userColors.get(name) ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length];
   const [stats, setStats] = useState<CommunityStats | null>(null);
 
   // Headline numbers from the server-side aggregator. Refresh as the pool changes.
@@ -262,7 +263,7 @@ export function CommunityTab({ allJobs, feed }: { allJobs: Job[]; feed: FeedEven
                   <Tooltip content={(p) => <ChartTip {...p} dark={dark} />} />
                   <Legend verticalAlign="top" align="right" wrapperStyle={{ fontSize: 11, color: dark ? "#A89EC0" : "#6B5E52", paddingBottom: 4 }} />
                   {charts.roleCatUsers.map((name, i) => (
-                    <Bar key={name} dataKey={name} stackId="s" fill={USER_COLORS[i % USER_COLORS.length]} radius={i === charts.roleCatUsers.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
+                    <Bar key={name} dataKey={name} stackId="s" fill={uc(name, i)} radius={i === charts.roleCatUsers.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
                   ))}
                 </BarChart>
               </ResponsiveContainer>
@@ -279,7 +280,7 @@ export function CommunityTab({ allJobs, feed }: { allJobs: Job[]; feed: FeedEven
                   <YAxis allowDecimals={false} tick={chartAxisStyle(dark)} />
                   <Tooltip content={(p) => <ChartTip {...p} dark={dark} />} />
                   {charts.weeklyUsers.map((name, i) => (
-                    <Area key={name} dataKey={name} type="monotone" stroke={USER_COLORS[i % USER_COLORS.length]} strokeWidth={2} fill={`${USER_COLORS[i % USER_COLORS.length]}22`} stackId="1" />
+                    <Area key={name} dataKey={name} type="monotone" stroke={uc(name, i)} strokeWidth={2} fill={`${uc(name, i)}22`} stackId="1" />
                   ))}
                 </AreaChart>
               </ResponsiveContainer>

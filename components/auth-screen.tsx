@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   updateProfile,
 } from "firebase/auth";
@@ -32,10 +33,25 @@ export function AuthScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
 
+  async function forgotPassword() {
+    setError(""); setInfo("");
+    if (!email) { setError("Enter your email above first."); return; }
+    setBusy(true);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setInfo("Password reset email sent — check your inbox.");
+    } catch (e) {
+      setError(prettyAuthError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submit() {
-    setError("");
+    setError(""); setInfo("");
     if (!email || !password) {
       setError("Email and password are required.");
       return;
@@ -140,11 +156,23 @@ export function AuthScreen() {
           </div>
         </div>
 
-        <div className="auth-error">{error}</div>
+        {error && <div className="auth-error">{error}</div>}
+        {info && <div style={{ fontSize: 13, color: "var(--success)", textAlign: "center", marginTop: 4 }}>{info}</div>}
 
         <Button className="w-full" onClick={submit} disabled={busy}>
           {busy ? "…" : mode === "signup" ? "Create account" : "Log in"}
         </Button>
+
+        {mode === "login" && (
+          <button
+            type="button"
+            onClick={forgotPassword}
+            disabled={busy}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "var(--text-light)", textDecoration: "underline", padding: 0, marginTop: 4 }}
+          >
+            Forgot password?
+          </button>
+        )}
 
         <div className="auth-hint">
           Your applications sync instantly and join the community garden 🌿

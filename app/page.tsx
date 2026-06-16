@@ -137,7 +137,7 @@ export default function Page() {
                 <ForestTab jobs={bloom.myJobs} />
               </TabsContent>
               <TabsContent value="community">
-                <CommunityTab allJobs={bloom.allJobs} feed={bloom.feed} />
+                <CommunityTab allJobs={bloom.allJobs} feed={bloom.feed} userColors={bloom.userColors} />
               </TabsContent>
             </>
           )}
