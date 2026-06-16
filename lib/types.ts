@@ -1,4 +1,5 @@
 export const STATUSES = [
+  "Want to Apply",
   "Applied",
   "Phone Screen",
   "Interview",

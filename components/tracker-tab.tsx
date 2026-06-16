@@ -31,7 +31,8 @@ export function TrackerTab({
       active: jobs.filter((j) => ["Applied", "Phone Screen", "Interview"].includes(j.status)).length,
       interview: jobs.filter((j) => j.status === "Interview").length,
       offer: jobs.filter((j) => j.status === "Offer").length,
-      rate: t ? Math.round((jobs.filter((j) => !["Applied", "Ghosted"].includes(j.status)).length / t) * 100) + "%" : "0%",
+      wantToApply: jobs.filter((j) => j.status === "Want to Apply").length,
+      rate: t ? Math.round((jobs.filter((j) => !["Want to Apply", "Applied", "Ghosted"].includes(j.status)).length / t) * 100) + "%" : "0%",
       star: jobs.filter((j) => isStarred(j)).length,
     };
   }, [jobs]);
@@ -65,10 +66,10 @@ export function TrackerTab({
     <div>
       <div className="stats-row">
         <div className="stat-card"><div className="stat-num">{stats.total}</div><div className="stat-label">Total</div></div>
+        <div className="stat-card"><div className="stat-num" style={{ color: "#5B4B6B" }}>{stats.wantToApply}</div><div className="stat-label">Want to Apply</div></div>
         <div className="stat-card"><div className="stat-num" style={{ color: "var(--info)" }}>{stats.active}</div><div className="stat-label">Active</div></div>
         <div className="stat-card sage"><div className="stat-num">{stats.interview}</div><div className="stat-label">Interviews</div></div>
         <div className="stat-card"><div className="stat-num" style={{ color: "var(--success)" }}>{stats.offer}</div><div className="stat-label">Offers</div></div>
-        <div className="stat-card sage"><div className="stat-num">{stats.rate}</div><div className="stat-label">Response rate</div></div>
         <div className="stat-card"><div className="stat-num" style={{ color: "var(--pink-400)" }}>{stats.star}</div><div className="stat-label">Starred</div></div>
       </div>
 

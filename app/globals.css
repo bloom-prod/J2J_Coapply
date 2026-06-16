@@ -127,6 +127,7 @@ table.bloom tr:last-child td{border-bottom:none;}
 table.bloom tr:hover td{background:var(--pink-50);}
 
 .pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap;}
+.s-Want-to-Apply{background:#E8E0F0;color:#5B4B6B;}
 .s-Applied{background:var(--info-bg);color:var(--info);}
 .s-Phone-Screen{background:var(--sage-50);color:var(--sage-600);}
 .s-Interview{background:var(--pink-100);color:var(--pink-600);}
@@ -271,6 +272,7 @@ table.bloom tr:hover td{background:var(--pink-50);}
 .dark .lb-table td{border-bottom-color:var(--sage-50);}
 .dark .lb-row-me{background:var(--pink-50);}
 
+.dark .s-Want-to-Apply{background:#1E1828;color:#B8A8C8;}
 .dark .s-Applied{background:var(--info-bg);color:var(--info);}
 .dark .s-Phone-Screen{background:var(--sage-50);color:var(--sage-400);}
 .dark .s-Interview{background:var(--pink-50);color:var(--pink-400);}

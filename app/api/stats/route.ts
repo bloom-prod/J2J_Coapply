@@ -6,6 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const STATUSES = [
+  "Want to Apply",
   "Applied",
   "Phone Screen",
   "Interview",
@@ -44,7 +45,8 @@ export async function GET(req: Request) {
       statusCounts[status] = (statusCounts[status] || 0) + 1;
       if (status === "Interview" || status === "Offer") interviewish++;
       if (status === "Offer") offers++;
-      if (status !== "Applied" && status !== "Ghosted") responded++;
+      // Exclude "Want to Apply" from response calculation since it's pre-application
+      if (status !== "Want to Apply" && status !== "Applied" && status !== "Ghosted") responded++;
 
       if (j.company) companyCounts[j.company] = (companyCounts[j.company] || 0) + 1;
       if (j.date) {
