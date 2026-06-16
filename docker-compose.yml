@@ -20,6 +20,7 @@ services:
     environment:
       - NODE_ENV=production
     labels:
+      - "traefik.docker.network=proxy"
       - "traefik.enable=true"
       - "traefik.http.routers.j2j.rule=Host(`j2j.pxndey.com`)"
       - "traefik.http.routers.j2j.entrypoints=web"
