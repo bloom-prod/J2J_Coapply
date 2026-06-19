@@ -21,10 +21,10 @@ export async function GET(req: Request) {
 
     const profiles = await adminDb.collection("userProfiles").get();
 
-    const difficultyCounts = { easy: 0, medium: 0, hard: 0 };
     const languageCounts: Record<string, number> = {};
     const weekly: Record<string, number> = {};
     const users = new Set<string>();
+    const userCounts: Record<string, { name: string; count: number }> = {};
     let totalSolved = 0;
 
     for (const profile of profiles.docs) {
@@ -38,23 +38,25 @@ export async function GET(req: Request) {
         .collection("leetcodeProblems")
         .get();
 
+      let userCount = 0;
+      const userName = profileData.name || "Unknown";
+
       problemsSnap.forEach((doc) => {
-        const p = doc.data() as Record<string, string>;
+        const p = doc.data() as Record<string, unknown>;
         totalSolved++;
-        if (p.difficulty) {
-          const d = p.difficulty.toLowerCase();
-          if (d === "easy") difficultyCounts.easy++;
-          else if (d === "medium") difficultyCounts.medium++;
-          else if (d === "hard") difficultyCounts.hard++;
-        }
-        if (p.language) {
+        userCount++;
+        if (typeof p.language === "string") {
           languageCounts[p.language] = (languageCounts[p.language] || 0) + 1;
         }
-        if (p.solvedAt) {
+        if (typeof p.solvedAt === "string") {
           const w = weekMonday(p.solvedAt.slice(0, 10));
           weekly[w] = (weekly[w] || 0) + 1;
         }
       });
+
+      if (userCount > 0) {
+        userCounts[uid] = { name: userName, count: userCount };
+      }
     }
 
     const totalUsers = users.size;
@@ -62,14 +64,18 @@ export async function GET(req: Request) {
       .sort((a, b) => (a[0] > b[0] ? 1 : -1))
       .map(([week, count]) => ({ week, count }));
 
+    const userLeaderboard = Object.values(userCounts)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
     return NextResponse.json({
       ok: true,
       totalUsers,
       totalSolved,
       avgPerUser: totalUsers ? Math.round((totalSolved / totalUsers) * 10) / 10 : 0,
-      difficultyCounts,
       languageCounts,
       weeklyVolume,
+      userLeaderboard,
     });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);

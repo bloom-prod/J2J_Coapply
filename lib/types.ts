@@ -66,10 +66,10 @@ export interface UserProfile {
 export interface LeetCodeProblemDoc {
   problemId: string;
   title: string;
-  difficulty: "Easy" | "Medium" | "Hard";
+  difficulty?: string;
   language: string;
   commitHash: string;
-  solvedAt: string; // ISO date
+  solvedAt: string;
 }
 
 export interface LeetCodeStats {
@@ -77,9 +77,9 @@ export interface LeetCodeStats {
   totalUsers: number;
   totalSolved: number;
   avgPerUser: number;
-  difficultyCounts: { easy: number; medium: number; hard: number };
   languageCounts: Record<string, number>;
   weeklyVolume: { week: string; count: number }[];
+  userLeaderboard: { name: string; count: number }[];
 }
 
 export interface FeedEvent {
