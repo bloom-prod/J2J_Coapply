@@ -20,19 +20,6 @@ services:
       - jobless
       - proxy
 
-  leetcode-sync:
-    build:
-      context: ./sync-service
-      dockerfile: Dockerfile
-    env_file:
-      - .env.local
-    environment:
-      - INTERNAL_API_BASE=http://web:3000
-    restart: unless-stopped
-    networks:
-      - jobless
-      - proxy
-
 networks:
   jobless:
     driver: bridge
