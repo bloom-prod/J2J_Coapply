@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { timeAgo } from "@/lib/job-utils";
 
 const FALLBACK_COLORS = ["#E07BA0","#7BB87B","#78AEDE","#DDB060","#A87BD4","#5FC5C5","#E8895A"];
 
@@ -283,6 +284,28 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
                       <Bar dataKey="count" fill={dark ? "#78AEDE" : "#185FA5"} radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+            <div className="feed-card">
+              <div className="it">Recent solves 🎯</div>
+              <div className="feed-list">
+                {stats.recentActivity.length === 0 ? (
+                  <div className="feed-empty">No activity yet — start solving problems! 🎯</div>
+                ) : (
+                  stats.recentActivity.map((e, i) => (
+                    <div className="feed-item" key={i}>
+                      <span className="feed-ic">🎯</span>
+                      <div className="feed-body">
+                        <div className="feed-text">
+                          <><strong>{e.userName}</strong> solved <strong>{e.title}</strong></>
+                        </div>
+                        <div className="feed-sub">
+                          {e.language} · <span className="feed-time">{timeAgo(e.solvedAt)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>

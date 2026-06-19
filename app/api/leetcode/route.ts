@@ -26,6 +26,13 @@ export async function GET(req: Request) {
     const weekly: Record<string, number> = {};
     const users = new Set<string>();
     const userCounts: Record<string, { name: string; count: number }> = {};
+    const recentActivity: Array<{
+      userName: string;
+      problemId: string;
+      title: string;
+      language: string;
+      solvedAt: string;
+    }> = [];
     let totalSolved = 0;
 
     for (const profile of profiles.docs) {
@@ -62,6 +69,15 @@ export async function GET(req: Request) {
         if (typeof p.solvedAt === "string") {
           const w = weekMonday(p.solvedAt.slice(0, 10));
           weekly[w] = (weekly[w] || 0) + 1;
+          
+          // Collect for activity feed
+          recentActivity.push({
+            userName,
+            problemId: (p.problemId as string) || doc.id,
+            title: (p.title as string) || "Unknown Problem",
+            language: p.language as string,
+            solvedAt: p.solvedAt as string,
+          });
         }
       });
 
@@ -79,6 +95,11 @@ export async function GET(req: Request) {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
+    // Sort activity by solved date, newest first, take last 20
+    const sortedActivity = recentActivity
+      .sort((a, b) => new Date(b.solvedAt).getTime() - new Date(a.solvedAt).getTime())
+      .slice(0, 20);
+
     return NextResponse.json({
       ok: true,
       totalUsers,
@@ -87,6 +108,7 @@ export async function GET(req: Request) {
       languageCounts,
       weeklyVolume,
       userLeaderboard,
+      recentActivity: sortedActivity,
     });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);

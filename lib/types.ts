@@ -80,6 +80,7 @@ export interface LeetCodeStats {
   languageCounts: Record<string, number>;
   weeklyVolume: { week: string; count: number }[];
   userLeaderboard: { name: string; count: number }[];
+  recentActivity: { userName: string; problemId: string; title: string; language: string; solvedAt: string }[];
 }
 
 export interface FeedEvent {
