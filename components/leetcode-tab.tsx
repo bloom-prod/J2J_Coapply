@@ -301,7 +301,7 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
                           <><strong>{e.userName}</strong> solved <strong>{e.title}</strong></>
                         </div>
                         <div className="feed-sub">
-                          {e.language} · <span className="feed-time">{timeAgo(e.solvedAt)}</span>
+                          {e.language} · <span className="feed-time">{timeAgo(new Date(e.solvedAt))}</span>
                         </div>
                       </div>
                     </div>
