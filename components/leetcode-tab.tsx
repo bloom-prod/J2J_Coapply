@@ -217,7 +217,16 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
                         ))}
                       </Pie>
                       <Tooltip content={(p) => <ChartTip {...p} dark={dark} />} />
-                      <Legend layout="vertical" align="right" verticalAlign="middle" wrapperStyle={{ fontSize: 11, color: dark ? "#A89EC0" : "#6B5E52" }} />
+                      <Legend
+                        layout="vertical"
+                        align="right"
+                        verticalAlign="middle"
+                        wrapperStyle={{
+                          fontSize: 11,
+                          color: dark ? "#A89EC0" : "#6B5E52",
+                          paddingLeft: 8,
+                        }}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -232,6 +241,15 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
                       <XAxis type="number" allowDecimals={false} tick={chartAxisStyle(dark)} />
                       <YAxis type="category" dataKey="name" width={80} tick={chartAxisStyle(dark)} />
                       <Tooltip cursor={{ fill: dark ? "rgba(224,123,160,.08)" : "rgba(212,83,126,.06)" }} content={(p) => <ChartTip {...p} dark={dark} />} />
+                      <Legend
+                        verticalAlign="top"
+                        align="right"
+                        wrapperStyle={{
+                          fontSize: 11,
+                          color: dark ? "#A89EC0" : "#6B5E52",
+                          paddingBottom: 4,
+                        }}
+                      />
                       <Bar dataKey="value" fill={dark ? "#E07BA0" : "#F2AECF"} radius={[0, 6, 6, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -253,6 +271,15 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
                       <XAxis dataKey="week" tick={chartAxisStyle(dark)} />
                       <YAxis allowDecimals={false} tick={chartAxisStyle(dark)} />
                       <Tooltip cursor={{ fill: dark ? "rgba(224,123,160,.08)" : "rgba(212,83,126,.06)" }} content={(p) => <ChartTip {...p} dark={dark} />} />
+                      <Legend
+                        verticalAlign="top"
+                        align="right"
+                        wrapperStyle={{
+                          fontSize: 11,
+                          color: dark ? "#A89EC0" : "#6B5E52",
+                          paddingBottom: 4,
+                        }}
+                      />
                       <Bar dataKey="count" fill={dark ? "#78AEDE" : "#185FA5"} radius={[6, 6, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>

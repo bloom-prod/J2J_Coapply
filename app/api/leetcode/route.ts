@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
+import { adminAuth } from "@/lib/firebase-admin";
 import { requireUser, HttpError } from "@/lib/auth-server";
 
 export const runtime = "nodejs";
@@ -39,7 +40,17 @@ export async function GET(req: Request) {
         .get();
 
       let userCount = 0;
-      const userName = profileData.name || "Unknown";
+      
+      // Get name from profile, or fallback to Firebase Auth displayName, or "Someone"
+      let userName = profileData.name;
+      if (!userName) {
+        try {
+          const userRecord = await adminAuth.getUser(uid);
+          userName = userRecord.displayName || userRecord.email || "Someone";
+        } catch {
+          userName = "Someone";
+        }
+      }
 
       problemsSnap.forEach((doc) => {
         const p = doc.data() as Record<string, unknown>;
