@@ -22,7 +22,7 @@ import {
 } from "firebase/firestore";
 import { toast } from "sonner";
 import { auth, db } from "@/lib/firebase";
-import type { FeedEvent, Job } from "@/lib/types";
+import type { FeedEvent, Job, UserProfile } from "@/lib/types";
 
 const USER_COLORS = ["#E07BA0","#7BB87B","#78AEDE","#DDB060","#A87BD4","#5FC5C5","#E8895A"];
 const NAME_COLOR_OVERRIDES: Record<string, string> = { "Shruti": "#FF69B4" }; // hot pink
@@ -310,6 +310,46 @@ export function useBloom() {
     [authedFetch]
   );
 
+  const [fetchedProfile, setFetchedProfile] = useState<UserProfile | null>(null);
+
+  const fetchProfile = useCallback(async () => {
+    if (!auth.currentUser) return;
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch("/api/profile", { headers: { Authorization: `Bearer ${token}` } });
+      const d = await res.json();
+      if (d.ok) setFetchedProfile(d.profile);
+    } catch (e) {
+      console.error("fetchProfile error", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user) fetchProfile();
+    else setFetchedProfile(null);
+  }, [user, fetchProfile]);
+
+  const updateProfile = useCallback(
+    async (data: Record<string, string>) => {
+      if (!auth.currentUser) return;
+      try {
+        const token = await auth.currentUser.getIdToken();
+        const res = await fetch("/api/profile", {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        const d = await res.json();
+        if (!res.ok || !d.ok) throw new Error(d.error || `Update failed (${res.status})`);
+        await fetchProfile();
+        toast.success("Profile updated 🌿");
+      } catch (e) {
+        toast.error("Profile update failed — " + (e as Error).message);
+      }
+    },
+    [fetchProfile]
+  );
+
   const signOut = useCallback(() => fbSignOut(auth), []);
 
   const userColors = useMemo(
@@ -330,6 +370,8 @@ export function useBloom() {
     deleteJob,
     toggleStar,
     signOut,
+    profile: fetchedProfile,
+    updateProfile,
   };
 }
 

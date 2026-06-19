@@ -51,6 +51,37 @@ export interface Job {
   updated: string;
 }
 
+export interface UserProfile {
+  uid: string;
+  name: string;
+  email: string;
+  color: string;
+  githubUrl?: string;
+  linkedinUrl?: string;
+  websiteUrl?: string;
+  leetcodeRepoUrl?: string;
+  leetcodeLastSyncedAt?: string;
+}
+
+export interface LeetCodeProblemDoc {
+  problemId: string;
+  title: string;
+  difficulty: "Easy" | "Medium" | "Hard";
+  language: string;
+  commitHash: string;
+  solvedAt: string; // ISO date
+}
+
+export interface LeetCodeStats {
+  ok: boolean;
+  totalUsers: number;
+  totalSolved: number;
+  avgPerUser: number;
+  difficultyCounts: { easy: number; medium: number; hard: number };
+  languageCounts: Record<string, number>;
+  weeklyVolume: { week: string; count: number }[];
+}
+
 export interface FeedEvent {
   type: "applied" | "status" | "offer";
   company: string;

@@ -23,6 +23,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /userProfiles/{userId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /userProfiles/{userId}/leetcodeProblems/{problemId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
     // Deny everything else by default.
     match /{document=**} {
       allow read, write: if false;

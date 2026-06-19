@@ -8,6 +8,8 @@ import { InsightsTab } from "@/components/insights-tab";
 import { TimelineTab } from "@/components/timeline-tab";
 import { ForestTab } from "@/components/forest-tab";
 import { CommunityTab } from "@/components/community-tab";
+import { LeetCodeTab } from "@/components/leetcode-tab";
+import { ProfileTab } from "@/components/profile-tab";
 import { ApplicationDialog } from "@/components/application-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -80,7 +82,9 @@ export default function Page() {
     ["insights", "📊 Insights"],
     ["timeline", "🗓 Timeline"],
     ["forest", "🌳 My Forest"],
+    ["leetcode", "💻 LeetCode"],
     ["community", "🌍 Community"],
+    ["profile", "👤 Profile"],
   ] as const;
 
   return (
@@ -136,8 +140,14 @@ export default function Page() {
               <TabsContent value="forest">
                 <ForestTab jobs={bloom.myJobs} />
               </TabsContent>
+              <TabsContent value="leetcode">
+                <LeetCodeTab userColors={bloom.userColors} />
+              </TabsContent>
               <TabsContent value="community">
                 <CommunityTab allJobs={bloom.allJobs} feed={bloom.feed} userColors={bloom.userColors} />
+              </TabsContent>
+              <TabsContent value="profile">
+                <ProfileTab profile={bloom.profile} updateProfile={bloom.updateProfile} />
               </TabsContent>
             </>
           )}
