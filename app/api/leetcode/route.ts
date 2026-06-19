@@ -60,7 +60,6 @@ export async function GET(req: Request) {
     const totalUsers = users.size;
     const weeklyVolume = Object.entries(weekly)
       .sort((a, b) => (a[0] > b[0] ? 1 : -1))
-      .slice(-12)
       .map(([week, count]) => ({ week, count }));
 
     return NextResponse.json({
