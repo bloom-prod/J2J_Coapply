@@ -22,8 +22,6 @@ also emit feed events). All **reads** stream live from Firestore via `onSnapshot
 shared pool, stats, charts, leaderboard, and feed update in real time. Firestore rules deny
 client writes entirely — the Admin SDK on the server bypasses them.
 
-> ⚠️ **Privacy:** full shared pool — every signed-in user can read everyone's application
-> records. To restrict, tighten `firestore.rules` and serve per-user data from the API.
 
 ## Project layout
 
