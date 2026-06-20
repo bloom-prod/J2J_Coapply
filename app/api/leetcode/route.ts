@@ -26,7 +26,6 @@ export async function GET(req: Request) {
     const difficultyCounts: Record<string, number> = {};
     const weekly: Record<string, number> = {};
     const weeklyByUser: Record<string, Record<string, number>> = {};
-    const users = new Set<string>();
     const userCounts: Record<string, { name: string; count: number }> = {};
     const recentActivity: Array<{
       userName: string;
@@ -41,7 +40,6 @@ export async function GET(req: Request) {
     for (const profile of profiles.docs) {
       const uid = profile.id;
       const profileData = profile.data() as { name?: string; leetcodeRepoUrl?: string };
-      if (profileData.leetcodeRepoUrl) users.add(uid);
 
       const problemsSnap = await adminDb
         .collection("userProfiles")
@@ -95,7 +93,7 @@ export async function GET(req: Request) {
       }
     }
 
-    const totalUsers = users.size;
+    const totalUsers = Object.keys(userCounts).length;
     const weeklyVolume = Object.entries(weekly)
       .sort((a, b) => (a[0] > b[0] ? 1 : -1))
       .map(([week, count]) => ({ week, count }));

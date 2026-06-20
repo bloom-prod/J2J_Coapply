@@ -250,11 +250,11 @@ export async function POST(req: Request) {
     // 4) Fetch commits → build date map by problemId
     const commits = await fetchCommits(owner, repo, since);
     const dateMap = new Map<string, { date: string; hash: string }>();
-    
+
     for (const c of commits) {
       const parsed = parseCommitMessage(c.commit.message);
       if (!parsed) continue;
-      
+
       // Only record the first (most recent) commit for each problem
       if (!dateMap.has(parsed.problemId)) {
         dateMap.set(parsed.problemId, {
@@ -263,6 +263,9 @@ export async function POST(req: Request) {
         });
       }
     }
+
+    // Fallback date: most recent commit (used when commit message format doesn't match)
+    const fallbackDate = commits.length > 0 ? commits[0].commit.author.date : new Date().toISOString();
 
     // 5) Build problem list from stats.json (source of truth)
     const newProblems: Array<{
@@ -275,13 +278,13 @@ export async function POST(req: Request) {
     }> = [];
 
     for (const problemId of problemIds) {
-      // Skip if no commit date found (not yet synced via commit)
-      const dateInfo = dateMap.get(problemId);
-      if (!dateInfo) continue;
-
-      // Get language from git tree
+      // Get language from git tree (required — must have a solution file)
       const lang = languageMap.get(problemId);
-      if (!lang) continue; // Skip if no solution file found
+      if (!lang) continue;
+
+      const dateInfo = dateMap.get(problemId);
+      // On incremental sync, skip problems with no recent commit (already stored from prior sync)
+      if (!dateInfo && !forceRefresh) continue;
 
       // Derive title from problemId
       const titleRaw = problemId
@@ -294,8 +297,8 @@ export async function POST(req: Request) {
         title,
         difficulty: difficultyMap[problemId] || "unknown",
         language: lang,
-        commitHash: dateInfo.hash,
-        solvedAt: dateInfo.date,
+        commitHash: dateInfo?.hash ?? "",
+        solvedAt: dateInfo?.date ?? fallbackDate,
       });
     }
 
