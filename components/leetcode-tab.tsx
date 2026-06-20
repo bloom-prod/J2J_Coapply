@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -18,13 +20,6 @@ import { auth } from "@/lib/firebase";
 import type { LeetCodeStats } from "@/lib/types";
 import { useDarkMode } from "@/hooks/use-dark-mode";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toast } from "sonner";
 import { timeAgo } from "@/lib/job-utils";
 
@@ -64,25 +59,12 @@ function ChartTip({ active, payload, label, dark }: TipProps) {
   );
 }
 
-type Timeframe = "last7" | "last30" | "last90" | "all";
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-
-function filterByTimeframe(data: { week: string; count: number }[], tf: Timeframe): { week: string; count: number }[] {
-  if (tf === "all") return data;
-  const today = new Date(new Date().toISOString().slice(0, 10) + "T00:00:00");
-  const weeksMap: Record<Timeframe, number> = {
-    last7: 1, last30: 4, last90: 12, all: 999,
-  };
-  const cutoff = new Date(today.getTime() - weeksMap[tf] * WEEK_MS);
-  return data.filter((d) => new Date(d.week + "T00:00:00") >= cutoff);
-}
 
 export function LeetCodeTab({ userColors }: { userColors: Map<string, string> }) {
   const [stats, setStats] = useState<LeetCodeStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [timeframe, setTimeframe] = useState<Timeframe>("last90");
 
   async function fetchStats() {
     try {
@@ -142,19 +124,39 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
       .map(([name, value]) => ({ name, value }));
   }, [stats]);
 
+  const difficultyData = useMemo(() => {
+    if (!stats?.difficultyCounts) return [];
+    const order = ["easy", "medium", "hard"];
+    const colors: Record<string, string> = {
+      easy: "#10b981",    // emerald-500
+      medium: "#f59e0b",  // amber-500
+      hard: "#ef4444",    // red-500
+      unknown: "#6b7280", // gray-500
+    };
+    return order
+      .filter((key) => stats.difficultyCounts[key])
+      .map((key) => ({
+        name: key.charAt(0).toUpperCase() + key.slice(1),
+        value: stats.difficultyCounts[key],
+        fill: colors[key] || colors.unknown,
+      }));
+  }, [stats]);
+
   const weeklyData = useMemo(() => {
     if (!stats) return [];
-    const all = stats.weeklyVolume.map((w) => ({
-      week: fmtWeekLabel(w.week),
-      rawWeek: w.week,
-      count: w.count,
-    }));
-    const filtered = filterByTimeframe(
-      all.map((a) => ({ week: a.rawWeek, count: a.count })),
-      timeframe
-    );
-    return filtered.map((f) => ({ week: fmtWeekLabel(f.week), count: f.count }));
-  }, [stats, timeframe]);
+    // Format week labels for the new per-user weekly data
+    return stats.weeklyData.map((w) => {
+      const obj: Record<string, string | number> = {};
+      Object.entries(w).forEach(([key, value]) => {
+        if (key === "week") {
+          obj[key] = fmtWeekLabel(value as string);
+        } else {
+          obj[key] = value;
+        }
+      });
+      return obj;
+    });
+  }, [stats]);
 
   const card = (id: string, val: string | number, label: string, sage?: boolean, color?: string) => (
     <div className={`stat-card${sage ? " sage" : ""}`} key={id}>
@@ -177,17 +179,6 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
       <div className="sec-header" style={{ marginBottom: 6 }}>
         <span className="sec-title">💻 LeetCode Progress</span>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <Select value={timeframe} onValueChange={(v) => setTimeframe(v as Timeframe)}>
-            <SelectTrigger className="w-[140px] h-8 text-xs">
-              <SelectValue placeholder="Timeframe" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="last7">Last Week</SelectItem>
-              <SelectItem value="last30">1 Month</SelectItem>
-              <SelectItem value="last90">3 Months</SelectItem>
-              <SelectItem value="all">All Time</SelectItem>
-            </SelectContent>
-          </Select>
           <Button variant="outline" size="sm" className="rounded-full" onClick={handleRefresh} disabled={syncing}>
             <i className="ti ti-refresh" /> {syncing ? "Syncing…" : "Refresh / Sync"}
           </Button>
@@ -206,7 +197,7 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
           </div>
 
           <div className="comm-grid" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
               <div className="chart-card">
                 <div className="it">Solved by user</div>
                 <div className="chart-wrap">
@@ -215,6 +206,32 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
                       <Pie data={userData} dataKey="value" nameKey="name" innerRadius="55%" outerRadius="80%" paddingAngle={1}>
                         {userData.map((d, i) => (
                           <Cell key={i} fill={uc(d.name, i, userColors)} stroke="none" />
+                        ))}
+                      </Pie>
+                      <Tooltip content={(p) => <ChartTip {...p} dark={dark} />} />
+                      <Legend
+                        layout="vertical"
+                        align="right"
+                        verticalAlign="middle"
+                        wrapperStyle={{
+                          fontSize: 11,
+                          color: dark ? "#A89EC0" : "#6B5E52",
+                          paddingLeft: 8,
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="chart-card">
+                <div className="it">Difficulty</div>
+                <div className="chart-wrap">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={difficultyData} dataKey="value" nameKey="name" innerRadius="55%" outerRadius="80%" paddingAngle={1}>
+                        {difficultyData.map((d, i) => (
+                          <Cell key={i} fill={d.fill} stroke="none" />
                         ))}
                       </Pie>
                       <Tooltip content={(p) => <ChartTip {...p} dark={dark} />} />
@@ -267,22 +284,15 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
                   </div>
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={weeklyData} margin={{ left: 0, right: 8, top: 4, bottom: 4 }}>
-                      <CartesianGrid vertical={false} stroke={dark ? "#2E2B3C" : "#F0F5F0"} />
+                    <AreaChart data={weeklyData} margin={{ left: 0, right: 12, top: 6, bottom: 4 }}>
+                      <CartesianGrid stroke={dark ? "#2E2B3C" : "#F0F5F0"} vertical={false} />
                       <XAxis dataKey="week" tick={chartAxisStyle(dark)} />
                       <YAxis allowDecimals={false} tick={chartAxisStyle(dark)} />
-                      <Tooltip cursor={{ fill: dark ? "rgba(224,123,160,.08)" : "rgba(212,83,126,.06)" }} content={(p) => <ChartTip {...p} dark={dark} />} />
-                      <Legend
-                        verticalAlign="top"
-                        align="right"
-                        wrapperStyle={{
-                          fontSize: 11,
-                          color: dark ? "#A89EC0" : "#6B5E52",
-                          paddingBottom: 4,
-                        }}
-                      />
-                      <Bar dataKey="count" fill={dark ? "#78AEDE" : "#185FA5"} radius={[6, 6, 0, 0]} />
-                    </BarChart>
+                      <Tooltip content={(p) => <ChartTip {...p} dark={dark} />} />
+                      {stats?.weeklyUsers?.map((name, i) => (
+                        <Area key={name} dataKey={name} type="monotone" stroke={uc(name, i, userColors)} strokeWidth={2} fill={`${uc(name, i, userColors)}22`} stackId="1" />
+                      ))}
+                    </AreaChart>
                   </ResponsiveContainer>
                 )}
               </div>
@@ -293,7 +303,9 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
                 {stats.recentActivity.length === 0 ? (
                   <div className="feed-empty">No activity yet — start solving problems! 🎯</div>
                 ) : (
-                  stats.recentActivity.map((e, i) => (
+                  stats.recentActivity.map((e, i) => {
+                    const difficultyColor = e.difficulty === 'easy' ? '#10b981' : e.difficulty === 'medium' ? '#f59e0b' : e.difficulty === 'hard' ? '#ef4444' : '#6b7280';
+                    return (
                     <div className="feed-item" key={i}>
                       <span className="feed-ic">🎯</span>
                       <div className="feed-body">
@@ -301,11 +313,22 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
                           <><strong>{e.userName}</strong> solved <strong>{e.title}</strong></>
                         </div>
                         <div className="feed-sub">
-                          {e.language} · <span className="feed-time">{timeAgo(new Date(e.solvedAt))}</span>
+                          {e.language} · <span style={{ 
+                            display: 'inline-block',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            textTransform: 'uppercase',
+                            backgroundColor: `${difficultyColor}20`,
+                            color: difficultyColor,
+                            marginRight: '6px'
+                          }}>{e.difficulty}</span> · <span className="feed-time">{timeAgo(new Date(e.solvedAt))}</span>
                         </div>
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>

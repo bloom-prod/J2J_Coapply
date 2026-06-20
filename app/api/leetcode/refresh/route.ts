@@ -75,6 +75,43 @@ async function fetchGitTree(owner: string, repo: string): Promise<TreeItem[]> {
   throw new Error("Could not fetch git tree — check that the repo is public");
 }
 
+interface StatsJsonShas {
+  [folder: string]: {
+    difficulty?: string;
+    [key: string]: unknown;
+  };
+}
+
+async function fetchStatsJson(owner: string, repo: string): Promise<Record<string, string>> {
+  // Try main first, then master
+  for (const branch of ["main", "master"]) {
+    const url = `${RAW_GITHUB}/${owner}/${repo}/${branch}/stats.json`;
+    try {
+      const res = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "bloom-tracker",
+        },
+      });
+      if (res.ok) {
+        const data = await res.json() as { leetcode?: { shas?: StatsJsonShas } };
+        const difficultyMap: Record<string, string> = {};
+        const shas = data?.leetcode?.shas || {};
+        for (const [folder, info] of Object.entries(shas)) {
+          if (info && typeof info === "object" && info.difficulty) {
+            difficultyMap[folder] = info.difficulty.toLowerCase();
+          }
+        }
+        return difficultyMap;
+      }
+    } catch {
+      /* fall through to next branch */
+    }
+  }
+  // Return empty map if stats.json not found or parse failed
+  return {};
+}
+
 function buildLanguageMap(tree: TreeItem[]): Map<string, string> {
   const map = new Map<string, string>();
   for (const item of tree) {
@@ -198,15 +235,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, synced: 0, message: "No new commits since last sync" });
     }
 
-    // 4) Parse commits + cross-reference with language map
+    // 4) Parse commits + cross-reference with language map and difficulty
     const seen = new Set<string>();
     const newProblems: Array<{
       problemId: string;
       title: string;
+      difficulty: string;
       language: string;
       commitHash: string;
       solvedAt: string;
     }> = [];
+
+    // Fetch difficulty map from stats.json
+    const difficultyMap = await fetchStatsJson(owner, repo);
 
     for (const c of commits) {
       const parsed = parseCommitMessage(c.commit.message);
@@ -220,6 +261,7 @@ export async function POST(req: Request) {
       newProblems.push({
         problemId: parsed.problemId,
         title: parsed.title,
+        difficulty: difficultyMap[parsed.problemId] || "unknown",
         language: lang,
         commitHash: c.sha,
         solvedAt: c.commit.author.date,
@@ -240,6 +282,7 @@ export async function POST(req: Request) {
       batch.set(ref, {
         problemId: p.problemId,
         title: p.title,
+        difficulty: p.difficulty,
         language: p.language,
         commitHash: p.commitHash,
         solvedAt: p.solvedAt,

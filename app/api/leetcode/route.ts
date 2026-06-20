@@ -23,13 +23,16 @@ export async function GET(req: Request) {
     const profiles = await adminDb.collection("userProfiles").get();
 
     const languageCounts: Record<string, number> = {};
+    const difficultyCounts: Record<string, number> = {};
     const weekly: Record<string, number> = {};
+    const weeklyByUser: Record<string, Record<string, number>> = {};
     const users = new Set<string>();
     const userCounts: Record<string, { name: string; count: number }> = {};
     const recentActivity: Array<{
       userName: string;
       problemId: string;
       title: string;
+      difficulty: string;
       language: string;
       solvedAt: string;
     }> = [];
@@ -66,15 +69,21 @@ export async function GET(req: Request) {
         if (typeof p.language === "string") {
           languageCounts[p.language] = (languageCounts[p.language] || 0) + 1;
         }
+        if (typeof p.difficulty === "string") {
+          difficultyCounts[p.difficulty] = (difficultyCounts[p.difficulty] || 0) + 1;
+        }
         if (typeof p.solvedAt === "string") {
           const w = weekMonday(p.solvedAt.slice(0, 10));
           weekly[w] = (weekly[w] || 0) + 1;
-          
+          if (!weeklyByUser[w]) weeklyByUser[w] = {};
+          weeklyByUser[w][userName] = (weeklyByUser[w][userName] || 0) + 1;
+
           // Collect for activity feed
           recentActivity.push({
             userName,
             problemId: (p.problemId as string) || doc.id,
             title: (p.title as string) || "Unknown Problem",
+            difficulty: (p.difficulty as string) || "unknown",
             language: p.language as string,
             solvedAt: p.solvedAt as string,
           });
@@ -95,6 +104,16 @@ export async function GET(req: Request) {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
+    // Get unique user names from leaderboard for weekly breakdown
+    const weeklyUsers = userLeaderboard.map((u) => u.name);
+    const weeklyData = Object.entries(weeklyByUser)
+      .sort((a, b) => (a[0] > b[0] ? 1 : -1))
+      .map(([week, byUser]) => {
+        const obj: Record<string, string | number> = { week };
+        weeklyUsers.forEach((name) => { obj[name] = byUser[name] || 0; });
+        return obj;
+      });
+
     // Sort activity by solved date, newest first, take last 20
     const sortedActivity = recentActivity
       .sort((a, b) => new Date(b.solvedAt).getTime() - new Date(a.solvedAt).getTime())
@@ -106,7 +125,10 @@ export async function GET(req: Request) {
       totalSolved,
       avgPerUser: totalUsers ? Math.round((totalSolved / totalUsers) * 10) / 10 : 0,
       languageCounts,
+      difficultyCounts,
       weeklyVolume,
+      weeklyData,
+      weeklyUsers,
       userLeaderboard,
       recentActivity: sortedActivity,
     });

@@ -78,9 +78,12 @@ export interface LeetCodeStats {
   totalSolved: number;
   avgPerUser: number;
   languageCounts: Record<string, number>;
+  difficultyCounts: Record<string, number>;
   weeklyVolume: { week: string; count: number }[];
+  weeklyData: Record<string, string | number>[];
+  weeklyUsers: string[];
   userLeaderboard: { name: string; count: number }[];
-  recentActivity: { userName: string; problemId: string; title: string; language: string; solvedAt: string }[];
+  recentActivity: { userName: string; problemId: string; title: string; difficulty: string; language: string; solvedAt: string }[];
 }
 
 export interface FeedEvent {
