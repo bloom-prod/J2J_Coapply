@@ -9,6 +9,7 @@ import { TimelineTab } from "@/components/timeline-tab";
 import { ForestTab } from "@/components/forest-tab";
 import { CommunityTab } from "@/components/community-tab";
 import { LeetCodeTab } from "@/components/leetcode-tab";
+import { JobsTab } from "@/components/jobs-tab";
 import { ProfileTab } from "@/components/profile-tab";
 import { ApplicationDialog } from "@/components/application-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -83,6 +84,7 @@ export default function Page() {
     ["timeline", "🗓 Timeline"],
     ["forest", "🌳 My Forest"],
     ["leetcode", "💻 LeetCode"],
+    ["jobs", "💼 Jobs"],
     ["community", "🌍 Community"],
     ["profile", "👤 Profile"],
   ] as const;
@@ -142,6 +144,9 @@ export default function Page() {
               </TabsContent>
               <TabsContent value="leetcode">
                 <LeetCodeTab userColors={bloom.userColors} />
+              </TabsContent>
+              <TabsContent value="jobs">
+                <JobsTab posts={bloom.jobPosts} onShare={bloom.shareJob} onDelete={bloom.deleteJobPost} />
               </TabsContent>
               <TabsContent value="community">
                 <CommunityTab allJobs={bloom.allJobs} feed={bloom.feed} userColors={bloom.userColors} />

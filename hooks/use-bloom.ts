@@ -22,7 +22,7 @@ import {
 } from "firebase/firestore";
 import { toast } from "sonner";
 import { auth, db } from "@/lib/firebase";
-import type { FeedEvent, Job, UserProfile } from "@/lib/types";
+import type { FeedEvent, Job, JobPost, UserProfile } from "@/lib/types";
 
 const USER_COLORS = ["#E07BA0","#7BB87B","#78AEDE","#DDB060","#A87BD4","#5FC5C5","#E8895A"];
 const NAME_COLOR_OVERRIDES: Record<string, string> = { "Shruti": "#FF69B4" }; // hot pink
@@ -106,6 +106,7 @@ export function useBloom() {
   const [loading, setLoading] = useState(true);
   const [serverJobs, setServerJobs] = useState<Job[]>([]);
   const [feed, setFeed] = useState<FeedEvent[]>([]);
+  const [jobPosts, setJobPosts] = useState<JobPost[]>([]);
   const [pending, setPending] = useState<Pending>(EMPTY_PENDING);
   const [userProfiles, setUserProfiles] = useState<Map<string, { name: string; color: string }> | null>(null);
   const firstSnap = useRef(true);
@@ -166,9 +167,29 @@ export function useBloom() {
       (err) => console.error("feed snapshot error", err)
     );
 
+    const unsubJobs = onSnapshot(
+      query(collection(db, "jobBoard"), orderBy("createdAt", "desc")),
+      (snap) => setJobPosts(snap.docs.map((d) => {
+        const x = d.data();
+        return {
+          id: d.id,
+          company: x.company || "",
+          role: x.role || "",
+          url: x.url || "",
+          location: x.location || "",
+          notes: x.notes || "",
+          ownerUid: x.ownerUid || "",
+          ownerName: x.ownerName || "Someone",
+          postedAt: x.createdAt?.toDate?.()?.toISOString?.() ?? "",
+        } as JobPost;
+      })),
+      (err) => console.error("jobBoard snapshot error", err)
+    );
+
     return () => {
       unsubApps();
       unsubFeed();
+      unsubJobs();
     };
   }, [user]);
 
@@ -350,6 +371,32 @@ export function useBloom() {
     [fetchProfile]
   );
 
+  const shareJob = useCallback(async (data: { company: string; role: string; url: string; location: string; notes: string }) => {
+    if (!auth.currentUser) return;
+    const token = await auth.currentUser.getIdToken();
+    const res = await fetch("/api/jobboard", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const d = await res.json();
+    if (!res.ok || !d.ok) throw new Error(d.error || "Failed to share job");
+    toast.success("Job shared with the group 💼");
+  }, []);
+
+  const deleteJobPost = useCallback(async (id: string) => {
+    if (!auth.currentUser) return;
+    const token = await auth.currentUser.getIdToken();
+    const res = await fetch("/api/jobboard", {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const d = await res.json();
+    if (!res.ok || !d.ok) throw new Error(d.error || "Failed to delete post");
+    toast.success("Post removed 🗑");
+  }, []);
+
   const signOut = useCallback(() => fbSignOut(auth), []);
 
   const userColors = useMemo(
@@ -364,11 +411,14 @@ export function useBloom() {
     allJobs,
     myJobs,
     feed,
+    jobPosts,
     userColors,
     createJob,
     updateJob,
     deleteJob,
     toggleStar,
+    shareJob,
+    deleteJobPost,
     signOut,
     profile: fetchedProfile,
     updateProfile,

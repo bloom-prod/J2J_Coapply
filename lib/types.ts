@@ -86,8 +86,20 @@ export interface LeetCodeStats {
   recentActivity: { userName: string; problemId: string; title: string; difficulty: string; language: string; solvedAt: string }[];
 }
 
+export interface JobPost {
+  id: string;
+  company: string;
+  role: string;
+  url: string;
+  location: string;
+  notes: string;
+  ownerUid: string;
+  ownerName: string;
+  postedAt: string; // ISO datetime
+}
+
 export interface FeedEvent {
-  type: "applied" | "status" | "offer";
+  type: "applied" | "status" | "offer" | "job_share";
   company: string;
   role: string;
   status: string;

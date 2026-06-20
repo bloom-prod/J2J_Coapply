@@ -331,7 +331,7 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
               <div className="feed-empty">No activity yet — be the first to plant something 🌱</div>
             ) : (
               feed.map((e, i) => {
-                const icon = e.type === "offer" ? "🎉" : e.type === "status" ? "🔄" : "🌱";
+                const icon = e.type === "offer" ? "🎉" : e.type === "status" ? "🔄" : e.type === "job_share" ? "💼" : "🌱";
                 return (
                   <div className="feed-item" key={i}>
                     <span className="feed-ic">{icon}</span>
@@ -341,6 +341,8 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
                           <><strong>{e.ownerName}</strong> got an offer from <strong>{e.company}</strong>!</>
                         ) : e.type === "status" ? (
                           <><strong>{e.ownerName}</strong> moved <strong>{e.company}</strong> → {e.status}</>
+                        ) : e.type === "job_share" ? (
+                          <><strong>{e.ownerName}</strong> shared a job at <strong>{e.company}</strong> — check the Jobs tab!</>
                         ) : (
                           <><strong>{e.ownerName}</strong> applied to <strong>{e.company}</strong></>
                         )}
