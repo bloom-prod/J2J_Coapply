@@ -5,8 +5,6 @@ import { useBloom } from "@/hooks/use-bloom";
 import { AuthScreen } from "@/components/auth-screen";
 import { TrackerTab } from "@/components/tracker-tab";
 import { InsightsTab } from "@/components/insights-tab";
-import { TimelineTab } from "@/components/timeline-tab";
-import { ForestTab } from "@/components/forest-tab";
 import { CommunityTab } from "@/components/community-tab";
 import { LeetCodeTab } from "@/components/leetcode-tab";
 import { JobsTab } from "@/components/jobs-tab";
@@ -81,8 +79,6 @@ export default function Page() {
   const NAV = [
     ["tracker", "📋 Applications"],
     ["insights", "📊 Insights"],
-    ["timeline", "🗓 Timeline"],
-    ["forest", "🌳 My Forest"],
     ["leetcode", "💻 LeetCode"],
     ["jobs", "💼 Jobs"],
     ["community", "🌍 Community"],
@@ -134,13 +130,7 @@ export default function Page() {
                 <TrackerTab jobs={bloom.myJobs} onAdd={openAdd} onEdit={openEdit} onToggleStar={bloom.toggleStar} />
               </TabsContent>
               <TabsContent value="insights">
-                <InsightsTab jobs={bloom.myJobs} />
-              </TabsContent>
-              <TabsContent value="timeline">
-                <TimelineTab jobs={bloom.myJobs} onEdit={openEdit} />
-              </TabsContent>
-              <TabsContent value="forest">
-                <ForestTab jobs={bloom.myJobs} />
+                <InsightsTab jobs={bloom.myJobs} onEdit={openEdit} />
               </TabsContent>
               <TabsContent value="leetcode">
                 <LeetCodeTab userColors={bloom.userColors} />
@@ -152,7 +142,7 @@ export default function Page() {
                 <CommunityTab allJobs={bloom.allJobs} feed={bloom.feed} userColors={bloom.userColors} />
               </TabsContent>
               <TabsContent value="profile">
-                <ProfileTab profile={bloom.profile} updateProfile={bloom.updateProfile} />
+                <ProfileTab profile={bloom.profile} updateProfile={bloom.updateProfile} jobs={bloom.myJobs} />
               </TabsContent>
             </>
           )}

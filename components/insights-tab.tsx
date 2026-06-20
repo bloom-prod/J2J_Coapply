@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { STATUSES, type Job } from "@/lib/types";
 import { classifyRole } from "@/lib/job-utils";
 import { useDarkMode } from "@/hooks/use-dark-mode";
+import { TimelineTab } from "@/components/timeline-tab";
 
 function weekMonday(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
@@ -34,7 +35,7 @@ function heatColor(count: number, dark: boolean): string {
   return scale[4];
 }
 
-export function InsightsTab({ jobs }: { jobs: Job[] }) {
+export function InsightsTab({ jobs, onEdit }: { jobs: Job[]; onEdit: (j: Job) => void }) {
   const data = useMemo(() => {
     const sc: Record<string, number> = {};
     STATUSES.forEach((s) => (sc[s] = 0));
@@ -289,6 +290,9 @@ export function InsightsTab({ jobs }: { jobs: Job[] }) {
         </div>
       </div>
 
+      <div style={{ gridColumn: "1/-1", marginTop: 14 }}>
+        <TimelineTab jobs={jobs} onEdit={onEdit} />
+      </div>
     </div>
   );
 }

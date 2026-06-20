@@ -6,8 +6,9 @@ import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { UserProfile } from "@/lib/types";
+import type { UserProfile, Job } from "@/lib/types";
 import { toast } from "sonner";
+import { ForestTab } from "@/components/forest-tab";
 
 function ExternalLink({ href, children }: { href: string; children: React.ReactNode }) {
   if (!href) return <span className="text-sm text-muted-foreground">—</span>;
@@ -21,9 +22,11 @@ function ExternalLink({ href, children }: { href: string; children: React.ReactN
 export function ProfileTab({
   profile,
   updateProfile,
+  jobs,
 }: {
   profile: UserProfile | null;
   updateProfile: (data: Record<string, string>) => Promise<void>;
+  jobs: Job[];
 }) {
   const [editing, setEditing] = useState(false);
   const [githubUrl, setGithubUrl] = useState(profile?.githubUrl || "");
@@ -144,6 +147,10 @@ export function ProfileTab({
             </Button>
           </div>
         </div>
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <ForestTab jobs={jobs} />
       </div>
     </div>
   );
