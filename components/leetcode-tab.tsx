@@ -88,6 +88,7 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
       const syncRes = await fetch("/api/leetcode/refresh", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ force: true }),
       });
       const syncData = await syncRes.json();
       if (syncData.ok) {
@@ -126,7 +127,7 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
 
   const difficultyData = useMemo(() => {
     if (!stats?.difficultyCounts) return [];
-    const order = ["easy", "medium", "hard"];
+    const order = ["easy", "medium", "hard", "unknown"];
     const colors: Record<string, string> = {
       easy: "#10b981",    // emerald-500
       medium: "#f59e0b",  // amber-500
@@ -138,7 +139,7 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
       .map((key) => ({
         name: key.charAt(0).toUpperCase() + key.slice(1),
         value: stats.difficultyCounts[key],
-        fill: colors[key] || colors.unknown,
+        fill: colors[key],
       }));
   }, [stats]);
 
@@ -227,26 +228,32 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
               <div className="chart-card">
                 <div className="it">Difficulty</div>
                 <div className="chart-wrap">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={difficultyData} dataKey="value" nameKey="name" innerRadius="55%" outerRadius="80%" paddingAngle={1}>
-                        {difficultyData.map((d, i) => (
-                          <Cell key={i} fill={d.fill} stroke="none" />
-                        ))}
-                      </Pie>
-                      <Tooltip content={(p) => <ChartTip {...p} dark={dark} />} />
-                      <Legend
-                        layout="vertical"
-                        align="right"
-                        verticalAlign="middle"
-                        wrapperStyle={{
-                          fontSize: 11,
-                          color: dark ? "#A89EC0" : "#6B5E52",
-                          paddingLeft: 8,
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  {difficultyData.length === 0 ? (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-light)", fontSize: 13 }}>
+                      No difficulty data<br/>Sync your LeetCode repo
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={difficultyData} dataKey="value" nameKey="name" innerRadius="55%" outerRadius="80%" paddingAngle={1}>
+                          {difficultyData.map((d, i) => (
+                            <Cell key={i} fill={d.fill} stroke="none" />
+                          ))}
+                        </Pie>
+                        <Tooltip content={(p) => <ChartTip {...p} dark={dark} />} />
+                        <Legend
+                          layout="vertical"
+                          align="right"
+                          verticalAlign="middle"
+                          wrapperStyle={{
+                            fontSize: 11,
+                            color: dark ? "#A89EC0" : "#6B5E52",
+                            paddingLeft: 8,
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
               </div>
 
@@ -259,15 +266,6 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
                       <XAxis type="number" allowDecimals={false} tick={chartAxisStyle(dark)} />
                       <YAxis type="category" dataKey="name" width={80} tick={chartAxisStyle(dark)} />
                       <Tooltip cursor={{ fill: dark ? "rgba(224,123,160,.08)" : "rgba(212,83,126,.06)" }} content={(p) => <ChartTip {...p} dark={dark} />} />
-                      <Legend
-                        verticalAlign="top"
-                        align="right"
-                        wrapperStyle={{
-                          fontSize: 11,
-                          color: dark ? "#A89EC0" : "#6B5E52",
-                          paddingBottom: 4,
-                        }}
-                      />
                       <Bar dataKey="value" fill={dark ? "#E07BA0" : "#F2AECF"} radius={[0, 6, 6, 0]} />
                     </BarChart>
                   </ResponsiveContainer>

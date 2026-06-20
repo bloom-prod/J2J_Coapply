@@ -178,12 +178,19 @@ function parseCommitMessage(msg: string): { problemId: string; title: string } |
   const ident = cleaned.split(/(?:Stats:|Time:|\|)/i)[0].trim();
   if (!ident) return null;
 
-  const problemId = ident.toLowerCase();
+  // Handle "Create " prefix from LeetHub
+  let problemId = ident.toLowerCase();
+  problemId = problemId.replace(/^create\s+/, "");
 
-  // Derive title from the slug (strip leading number, replace dashes with spaces)
-  const titleRaw = ident
+  // Convert "number. title" format to "number-title" format to match folder names
+  // e.g., "2163. kth distinct string in an array" -> "2163-kth-distinct-string-in-an-array"
+  problemId = problemId
+    .replace(/^(\d+)\.\s*/, "$1-")  // Replace "2163. " with "2163-"
+    .replace(/\s+/g, "-");            // Replace spaces with hyphens
+
+  // Derive title from the slug
+  const titleRaw = problemId
     .replace(/^\d+-/, "")
-    .toLowerCase()
     .replace(/-/g, " ");
   const title = titleRaw.replace(/\b\w/g, (c) => c.toUpperCase());
 
@@ -210,33 +217,54 @@ export async function POST(req: Request) {
       throw new HttpError(400, "Invalid LeetCode repo URL");
     }
 
-    // 1) Fetch git tree (one call) → language per problem
-    const tree = await fetchGitTree(owner, repo);
-    const languageMap = buildLanguageMap(tree);
-    if (languageMap.size === 0) {
-      throw new HttpError(404, "No solution files found in repo — expected folders like 0001-two-sum/0001-two-sum.cpp");
+    // Check if this is a forced refresh (from button click)
+    const body = await req.json().catch(() => ({})) as { force?: boolean };
+    const forceRefresh = body?.force === true;
+
+    // 1) Fetch stats.json FIRST (source of truth for problems + difficulties)
+    const difficultyMap = await fetchStatsJson(owner, repo);
+    const problemIds = Object.keys(difficultyMap).filter(id => id !== "README.md");
+    
+    if (problemIds.length === 0) {
+      throw new HttpError(404, "No problems found in stats.json — make sure your LeetCode repo has a stats.json file");
     }
 
-    // 2) Determine since date (optional — for incremental sync)
+    // 2) Fetch git tree → language per problem
+    const tree = await fetchGitTree(owner, repo);
+    const languageMap = buildLanguageMap(tree);
+
+    // 3) Determine since date (optional — for incremental sync)
     let since: string | undefined;
-    const lastSynced = profileData?.leetcodeLastSyncedAt;
-    if (lastSynced) {
-      try {
-        const ts = (lastSynced as { toDate: () => Date }).toDate();
-        since = ts.toISOString();
-      } catch {
-        /* ignore */
+    if (!forceRefresh) {
+      const lastSynced = profileData?.leetcodeLastSyncedAt;
+      if (lastSynced) {
+        try {
+          const ts = (lastSynced as { toDate: () => Date }).toDate();
+          since = ts.toISOString();
+        } catch {
+          /* ignore */
+        }
       }
     }
 
-    // 3) Fetch commits (one call) → problem dates
+    // 4) Fetch commits → build date map by problemId
     const commits = await fetchCommits(owner, repo, since);
-    if (commits.length === 0) {
-      return NextResponse.json({ ok: true, synced: 0, message: "No new commits since last sync" });
+    const dateMap = new Map<string, { date: string; hash: string }>();
+    
+    for (const c of commits) {
+      const parsed = parseCommitMessage(c.commit.message);
+      if (!parsed) continue;
+      
+      // Only record the first (most recent) commit for each problem
+      if (!dateMap.has(parsed.problemId)) {
+        dateMap.set(parsed.problemId, {
+          date: c.commit.author.date,
+          hash: c.sha,
+        });
+      }
     }
 
-    // 4) Parse commits + cross-reference with language map and difficulty
-    const seen = new Set<string>();
+    // 5) Build problem list from stats.json (source of truth)
     const newProblems: Array<{
       problemId: string;
       title: string;
@@ -246,25 +274,28 @@ export async function POST(req: Request) {
       solvedAt: string;
     }> = [];
 
-    // Fetch difficulty map from stats.json
-    const difficultyMap = await fetchStatsJson(owner, repo);
+    for (const problemId of problemIds) {
+      // Skip if no commit date found (not yet synced via commit)
+      const dateInfo = dateMap.get(problemId);
+      if (!dateInfo) continue;
 
-    for (const c of commits) {
-      const parsed = parseCommitMessage(c.commit.message);
-      if (!parsed) continue;
-      if (seen.has(parsed.problemId)) continue;
-      seen.add(parsed.problemId);
+      // Get language from git tree
+      const lang = languageMap.get(problemId);
+      if (!lang) continue; // Skip if no solution file found
 
-      const lang = languageMap.get(parsed.problemId);
-      if (!lang) continue; // Skip if no matching file in tree
+      // Derive title from problemId
+      const titleRaw = problemId
+        .replace(/^\d+-/, "")
+        .replace(/-/g, " ");
+      const title = titleRaw.replace(/\b\w/g, (c) => c.toUpperCase());
 
       newProblems.push({
-        problemId: parsed.problemId,
-        title: parsed.title,
-        difficulty: difficultyMap[parsed.problemId] || "unknown",
+        problemId,
+        title,
+        difficulty: difficultyMap[problemId] || "unknown",
         language: lang,
-        commitHash: c.sha,
-        solvedAt: c.commit.author.date,
+        commitHash: dateInfo.hash,
+        solvedAt: dateInfo.date,
       });
     }
 
@@ -273,7 +304,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, synced: 0, message: "No new LeetCode problems found" });
     }
 
-    // 5) Write to Firestore
+    // 6) Write to Firestore
     const batch = adminDb.batch();
     batch.update(profileRef, { leetcodeLastSyncedAt: FieldValue.serverTimestamp() });
 
