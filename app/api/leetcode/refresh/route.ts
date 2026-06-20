@@ -197,36 +197,33 @@ function parseCommitMessage(msg: string): { problemId: string; title: string } |
   return { problemId, title };
 }
 
-/* ─── Main handler ──────────────────────────── */
+/* ─── Sync Single User ──────────────────────────── */
 
-export async function POST(req: Request) {
+interface SyncResult {
+  uid: string;
+  success: boolean;
+  synced: number;
+  error?: string;
+}
+
+async function syncUser(
+  uid: string,
+  repoUrl: string,
+  profileData: Record<string, unknown>,
+  forceRefresh: boolean
+): Promise<SyncResult> {
+  const [owner, repo] = parseRepoURL(repoUrl);
+  if (!owner || !repo) {
+    return { uid, success: false, synced: 0, error: "Invalid repo URL" };
+  }
+
   try {
-    const user = await requireUser(req);
-
-    const profileRef = adminDb.collection("userProfiles").doc(user.uid);
-    const profileSnap = await profileRef.get();
-    const profileData = profileSnap.data() as Record<string, unknown> | undefined;
-    const repoUrl = (profileData?.leetcodeRepoUrl || "") as string;
-
-    if (!repoUrl) {
-      throw new HttpError(400, "No LeetCode repo configured — add one in your Profile");
-    }
-
-    const [owner, repo] = parseRepoURL(repoUrl);
-    if (!owner || !repo) {
-      throw new HttpError(400, "Invalid LeetCode repo URL");
-    }
-
-    // Check if this is a forced refresh (from button click)
-    const body = await req.json().catch(() => ({})) as { force?: boolean };
-    const forceRefresh = body?.force === true;
-
     // 1) Fetch stats.json FIRST (source of truth for problems + difficulties)
     const difficultyMap = await fetchStatsJson(owner, repo);
     const problemIds = Object.keys(difficultyMap).filter(id => id !== "README.md");
     
     if (problemIds.length === 0) {
-      throw new HttpError(404, "No problems found in stats.json — make sure your LeetCode repo has a stats.json file");
+      return { uid, success: false, synced: 0, error: "No stats.json or no problems found" };
     }
 
     // 2) Fetch git tree → language per problem
@@ -264,10 +261,10 @@ export async function POST(req: Request) {
       }
     }
 
-    // Fallback date: most recent commit (used when commit message format doesn't match)
+    // Fallback date: most recent commit
     const fallbackDate = commits.length > 0 ? commits[0].commit.author.date : new Date().toISOString();
 
-    // 5) Build problem list from stats.json (source of truth)
+    // 5) Build problem list from stats.json
     const newProblems: Array<{
       problemId: string;
       title: string;
@@ -278,12 +275,12 @@ export async function POST(req: Request) {
     }> = [];
 
     for (const problemId of problemIds) {
-      // Get language from git tree (required — must have a solution file)
+      // Get language from git tree (required)
       const lang = languageMap.get(problemId);
       if (!lang) continue;
 
       const dateInfo = dateMap.get(problemId);
-      // On incremental sync, skip problems with no recent commit (already stored from prior sync)
+      // On incremental sync, skip problems with no recent commit
       if (!dateInfo && !forceRefresh) continue;
 
       // Derive title from problemId
@@ -302,12 +299,8 @@ export async function POST(req: Request) {
       });
     }
 
-    if (newProblems.length === 0) {
-      await profileRef.update({ leetcodeLastSyncedAt: FieldValue.serverTimestamp() });
-      return NextResponse.json({ ok: true, synced: 0, message: "No new LeetCode problems found" });
-    }
-
     // 6) Write to Firestore
+    const profileRef = adminDb.collection("userProfiles").doc(uid);
     const batch = adminDb.batch();
     batch.update(profileRef, { leetcodeLastSyncedAt: FieldValue.serverTimestamp() });
 
@@ -326,10 +319,80 @@ export async function POST(req: Request) {
 
     await batch.commit();
 
+    return { uid, success: true, synced: newProblems.length };
+  } catch (err) {
+    return { 
+      uid, 
+      success: false, 
+      synced: 0, 
+      error: err instanceof Error ? err.message : "Unknown error" 
+    };
+  }
+}
+
+/* ─── Main handler ──────────────────────────── */
+
+export async function POST(req: Request) {
+  try {
+    // Verify the user is authenticated
+    await requireUser(req);
+
+    // Check if this is a forced refresh
+    const body = await req.json().catch(() => ({})) as { force?: boolean };
+    const forceRefresh = body?.force === true;
+
+    // Get all users with leetcodeRepoUrl configured
+    const profiles = await adminDb.collection("userProfiles").get();
+    const usersToSync: Array<{ uid: string; repoUrl: string; profileData: Record<string, unknown> }> = [];
+
+    profiles.forEach((doc) => {
+      const data = doc.data() as Record<string, unknown>;
+      const repoUrl = (data.leetcodeRepoUrl || "") as string;
+      if (repoUrl) {
+        usersToSync.push({ uid: doc.id, repoUrl, profileData: data });
+      }
+    });
+
+    if (usersToSync.length === 0) {
+      return NextResponse.json({ 
+        ok: true, 
+        synced: 0, 
+        message: "No users have LeetCode repos configured" 
+      });
+    }
+
+    // Sync all users (sequentially to avoid rate limiting)
+    const results: SyncResult[] = [];
+    let totalSynced = 0;
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const user of usersToSync) {
+      const result = await syncUser(user.uid, user.repoUrl, user.profileData, forceRefresh);
+      results.push(result);
+      
+      if (result.success) {
+        totalSynced += result.synced;
+        successCount++;
+      } else {
+        errorCount++;
+      }
+    }
+
+    // Build detailed message
+    let message = `Synced ${totalSynced} problem(s) across ${successCount} user(s)`;
+    if (errorCount > 0) {
+      message += ` (${errorCount} failed)`;
+    }
+
     return NextResponse.json({
       ok: true,
-      synced: newProblems.length,
-      message: `Synced ${newProblems.length} new problem(s)`,
+      synced: totalSynced,
+      usersSynced: successCount,
+      usersFailed: errorCount,
+      totalUsers: usersToSync.length,
+      message,
+      details: results.filter(r => !r.success || r.synced > 0), // Only include non-empty or failed
     });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);

@@ -92,7 +92,10 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
       });
       const syncData = await syncRes.json();
       if (syncData.ok) {
-        toast.success(syncData.message || `Synced ${syncData.synced} problem(s) 🎯`);
+        const userMsg = syncData.totalUsers > 1 
+          ? ` (${syncData.usersSynced}/${syncData.totalUsers} users)` 
+          : "";
+        toast.success(`${syncData.message}${userMsg} 🎯`);
       } else {
         toast.error(syncData.error || "Sync failed");
       }
@@ -181,12 +184,12 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
         <span className="sec-title">💻 LeetCode Progress</span>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <Button variant="outline" size="sm" className="rounded-full" onClick={handleRefresh} disabled={syncing}>
-            <i className="ti ti-refresh" /> {syncing ? "Syncing…" : "Refresh / Sync"}
+            <i className="ti ti-refresh" /> {syncing ? "Syncing community…" : "Refresh All"}
           </Button>
         </div>
       </div>
       <div className="privacy-note">
-        <i className="ti ti-info-circle" /> Syncs directly from your GitHub repo's commit history. Press Refresh to sync now.
+        <i className="ti ti-info-circle" /> Community sync: Refreshes all members' LeetCode repos. Press Refresh to sync everyone's progress.
       </div>
 
       {stats && (
