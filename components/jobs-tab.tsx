@@ -13,15 +13,22 @@ interface Props {
   posts: JobPost[];
   onShare: (data: { company: string; role: string; url: string; location: string; notes: string }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onRefresh: () => Promise<void>;
 }
 
 const EMPTY = { company: "", role: "", url: "", location: "", notes: "" };
 
-export function JobsTab({ posts, onShare, onDelete }: Props) {
+export function JobsTab({ posts, onShare, onDelete, onRefresh }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try { await onRefresh(); } finally { setRefreshing(false); }
+  }
 
   const myUid = auth.currentUser?.uid;
 
@@ -60,14 +67,14 @@ export function JobsTab({ posts, onShare, onDelete }: Props) {
     <div>
       <div className="sec-header" style={{ marginBottom: 6 }}>
         <span className="sec-title">💼 Job Board</span>
-        <Button
-          variant="outline"
-          size="sm"
-          className="rounded-full"
-          onClick={() => setShowForm((v) => !v)}
-        >
-          <i className="ti ti-plus" /> Share a Job
-        </Button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Button variant="outline" size="sm" className="rounded-full" onClick={handleRefresh} disabled={refreshing}>
+            <i className="ti ti-refresh" /> {refreshing ? "Refreshing…" : "Refresh"}
+          </Button>
+          <Button variant="outline" size="sm" className="rounded-full" onClick={() => setShowForm((v) => !v)}>
+            <i className="ti ti-plus" /> Share a Job
+          </Button>
+        </div>
       </div>
       <div className="privacy-note">
         <i className="ti ti-info-circle" /> Found a cool opening? Share it with the group so everyone can apply.

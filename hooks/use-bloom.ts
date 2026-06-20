@@ -167,29 +167,9 @@ export function useBloom() {
       (err) => console.error("feed snapshot error", err)
     );
 
-    const unsubJobs = onSnapshot(
-      query(collection(db, "jobBoard"), orderBy("createdAt", "desc")),
-      (snap) => setJobPosts(snap.docs.map((d) => {
-        const x = d.data();
-        return {
-          id: d.id,
-          company: x.company || "",
-          role: x.role || "",
-          url: x.url || "",
-          location: x.location || "",
-          notes: x.notes || "",
-          ownerUid: x.ownerUid || "",
-          ownerName: x.ownerName || "Someone",
-          postedAt: x.createdAt?.toDate?.()?.toISOString?.() ?? "",
-        } as JobPost;
-      })),
-      (err) => console.error("jobBoard snapshot error", err)
-    );
-
     return () => {
       unsubApps();
       unsubFeed();
-      unsubJobs();
     };
   }, [user]);
 
@@ -371,6 +351,23 @@ export function useBloom() {
     [fetchProfile]
   );
 
+  const fetchJobPosts = useCallback(async () => {
+    if (!auth.currentUser) return;
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch("/api/jobboard", { headers: { Authorization: `Bearer ${token}` } });
+      const d = await res.json();
+      if (d.ok) setJobPosts(d.posts as JobPost[]);
+    } catch (e) {
+      console.error("fetchJobPosts error", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user) fetchJobPosts();
+    else setJobPosts([]);
+  }, [user, fetchJobPosts]);
+
   const shareJob = useCallback(async (data: { company: string; role: string; url: string; location: string; notes: string }) => {
     if (!auth.currentUser) return;
     const token = await auth.currentUser.getIdToken();
@@ -382,7 +379,8 @@ export function useBloom() {
     const d = await res.json();
     if (!res.ok || !d.ok) throw new Error(d.error || "Failed to share job");
     toast.success("Job shared with the group 💼");
-  }, []);
+    await fetchJobPosts();
+  }, [fetchJobPosts]);
 
   const deleteJobPost = useCallback(async (id: string) => {
     if (!auth.currentUser) return;
@@ -395,7 +393,8 @@ export function useBloom() {
     const d = await res.json();
     if (!res.ok || !d.ok) throw new Error(d.error || "Failed to delete post");
     toast.success("Post removed 🗑");
-  }, []);
+    await fetchJobPosts();
+  }, [fetchJobPosts]);
 
   const signOut = useCallback(() => fbSignOut(auth), []);
 
@@ -417,6 +416,7 @@ export function useBloom() {
     updateJob,
     deleteJob,
     toggleStar,
+    fetchJobPosts,
     shareJob,
     deleteJobPost,
     signOut,

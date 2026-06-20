@@ -146,7 +146,7 @@ export default function Page() {
                 <LeetCodeTab userColors={bloom.userColors} />
               </TabsContent>
               <TabsContent value="jobs">
-                <JobsTab posts={bloom.jobPosts} onShare={bloom.shareJob} onDelete={bloom.deleteJobPost} />
+                <JobsTab posts={bloom.jobPosts} onShare={bloom.shareJob} onDelete={bloom.deleteJobPost} onRefresh={bloom.fetchJobPosts} />
               </TabsContent>
               <TabsContent value="community">
                 <CommunityTab allJobs={bloom.allJobs} feed={bloom.feed} userColors={bloom.userColors} />
