@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 import { STATUSES, type Job } from "@/lib/types";
 import { fmtDate, isStarred, PRIORITY_ORDER, statusKey } from "@/lib/job-utils";
 
@@ -13,16 +14,19 @@ export function TrackerTab({
   onAdd,
   onEdit,
   onToggleStar,
+  onShareToBoard,
 }: {
   jobs: Job[];
   onAdd: () => void;
   onEdit: (job: Job) => void;
   onToggleStar: (id: string) => void;
+  onShareToBoard: (data: { company: string; role: string; url: string; location: string; notes: string }) => Promise<void>;
 }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<string>("All");
   const [sf, setSf] = useState("date");
   const [sd, setSd] = useState(-1);
+  const [sharingId, setSharingId] = useState<string | null>(null);
 
   const stats = useMemo(() => {
     const t = jobs.length;
@@ -52,6 +56,22 @@ export function TrackerTab({
     });
     return out;
   }, [jobs, q, filter, sf, sd]);
+
+  async function handleShareToBoard(j: Job) {
+    if (!j.url) {
+      toast.error("Add an apply URL to this job before sharing");
+      return;
+    }
+    setSharingId(j.id);
+    try {
+      await onShareToBoard({ company: j.company, role: j.role, url: j.url, location: j.location, notes: j.notes });
+      toast.success(`${j.company} — ${j.role} shared to Job Board 💼`);
+    } catch (e) {
+      toast.error("Share failed — " + (e as Error).message);
+    } finally {
+      setSharingId(null);
+    }
+  }
 
   function sortBy(field: string) {
     if (sf === field) setSd((d) => d * -1);
@@ -146,6 +166,15 @@ export function TrackerTab({
                         <button className="abtn" title="Posting"><i className="ti ti-external-link" /></button>
                       </a>
                     )}
+                    <button
+                      className="abtn"
+                      title={j.url ? "Share to Job Board" : "Add a URL first to share"}
+                      disabled={sharingId === j.id}
+                      onClick={() => handleShareToBoard(j)}
+                      style={{ opacity: j.url ? 1 : 0.35 }}
+                    >
+                      <i className={sharingId === j.id ? "ti ti-loader-2" : "ti ti-share"} />
+                    </button>
                     <button className="abtn" onClick={() => onEdit(j)} title="Edit"><i className="ti ti-edit" /></button>
                   </td>
                 </tr>
