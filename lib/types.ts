@@ -107,6 +107,25 @@ export interface FeedEvent {
   ts: Date | null;
 }
 
+export interface Resume {
+  id: string;
+  userId: string;
+  userName: string;
+  title: string;
+  fileName: string;
+  uploadedAt: string;
+}
+
+export interface ResumeComment {
+  id: string;
+  resumeId: string;
+  userId: string;
+  userName: string;
+  text: string;
+  createdAt: string;
+  resolved: boolean;
+}
+
 export interface CommunityStats {
   ok: boolean;
   totalApps: number;

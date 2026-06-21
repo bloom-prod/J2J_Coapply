@@ -22,7 +22,7 @@ import {
 } from "firebase/firestore";
 import { toast } from "sonner";
 import { auth, db } from "@/lib/firebase";
-import type { FeedEvent, Job, JobPost, UserProfile } from "@/lib/types";
+import type { FeedEvent, Job, JobPost, Resume, UserProfile } from "@/lib/types";
 
 const USER_COLORS = ["#E07BA0","#7BB87B","#78AEDE","#DDB060","#A87BD4","#5FC5C5","#E8895A"];
 const NAME_COLOR_OVERRIDES: Record<string, string> = { "Shruti": "#FF69B4" }; // hot pink
@@ -311,6 +311,7 @@ export function useBloom() {
     [authedFetch]
   );
 
+  const [resumes, setResumes] = useState<Resume[]>([]);
   const [fetchedProfile, setFetchedProfile] = useState<UserProfile | null>(null);
 
   const fetchProfile = useCallback(async () => {
@@ -382,6 +383,55 @@ export function useBloom() {
     await fetchJobPosts();
   }, [fetchJobPosts]);
 
+  const fetchResumes = useCallback(async () => {
+    if (!auth.currentUser) return;
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch("/api/resumes", { headers: { Authorization: `Bearer ${token}` } });
+      const d = await res.json();
+      if (d.ok) setResumes(d.resumes as Resume[]);
+    } catch (e) {
+      console.error("fetchResumes error", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user) fetchResumes();
+    else setResumes([]);
+  }, [user, fetchResumes]);
+
+  const uploadResume = useCallback(async (title: string, file: File) => {
+    if (!auth.currentUser) return;
+    const fileBase64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve((reader.result as string).split(",")[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const token = await auth.currentUser.getIdToken();
+    const res = await fetch("/api/resumes", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ title, fileName: file.name, fileBase64 }),
+    });
+    const d = await res.json();
+    if (!res.ok || !d.ok) throw new Error(d.error || "Upload failed");
+    await fetchResumes();
+  }, [fetchResumes]);
+
+  const deleteResume = useCallback(async (id: string) => {
+    if (!auth.currentUser) return;
+    const token = await auth.currentUser.getIdToken();
+    const res = await fetch("/api/resumes", {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const d = await res.json();
+    if (!res.ok || !d.ok) throw new Error(d.error || "Delete failed");
+    await fetchResumes();
+  }, [fetchResumes]);
+
   const deleteJobPost = useCallback(async (id: string) => {
     if (!auth.currentUser) return;
     const token = await auth.currentUser.getIdToken();
@@ -419,6 +469,10 @@ export function useBloom() {
     fetchJobPosts,
     shareJob,
     deleteJobPost,
+    resumes,
+    fetchResumes,
+    uploadResume,
+    deleteResume,
     signOut,
     profile: fetchedProfile,
     updateProfile,

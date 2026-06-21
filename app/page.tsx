@@ -9,10 +9,12 @@ import { CommunityTab } from "@/components/community-tab";
 import { LeetCodeTab } from "@/components/leetcode-tab";
 import { JobsTab } from "@/components/jobs-tab";
 import { ProfileTab } from "@/components/profile-tab";
+import { ResumeTab } from "@/components/resume-tab";
 import { ApplicationDialog } from "@/components/application-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { Job } from "@/lib/types";
 
 const CSV_HEADERS = [
@@ -36,6 +38,7 @@ export default function Page() {
   const [tab, setTab] = useState("tracker");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Job | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -81,8 +84,8 @@ export default function Page() {
     ["insights", "📊 Insights"],
     ["leetcode", "💻 LeetCode"],
     ["jobs", "💼 Jobs"],
+    ["resume", "📄 Resumes"],
     ["community", "🌍 Community"],
-    ["profile", "👤 Profile"],
   ] as const;
 
   return (
@@ -100,9 +103,9 @@ export default function Page() {
           <Button variant="outline" size="sm" className="rounded-full" onClick={exportCSV}>
             <i className="ti ti-download" /> Export CSV
           </Button>
-          <span className="user-chip">
+          <Button variant="outline" size="sm" className="rounded-full" onClick={() => setProfileOpen(true)}>
             <i className="ti ti-user" /> {bloom.user.displayName || bloom.user.email}
-          </span>
+          </Button>
           <Button variant="outline" size="sm" className="rounded-full" onClick={() => bloom.signOut()}>
             <i className="ti ti-logout" /> Sign out
           </Button>
@@ -138,11 +141,16 @@ export default function Page() {
               <TabsContent value="jobs">
                 <JobsTab posts={bloom.jobPosts} onShare={bloom.shareJob} onDelete={bloom.deleteJobPost} onRefresh={bloom.fetchJobPosts} />
               </TabsContent>
+              <TabsContent value="resume" style={{ padding: 0 }}>
+                <ResumeTab
+                  resumes={bloom.resumes}
+                  currentUid={bloom.user.uid}
+                  onUpload={bloom.uploadResume}
+                  onDelete={bloom.deleteResume}
+                />
+              </TabsContent>
               <TabsContent value="community">
                 <CommunityTab allJobs={bloom.allJobs} feed={bloom.feed} userColors={bloom.userColors} />
-              </TabsContent>
-              <TabsContent value="profile">
-                <ProfileTab profile={bloom.profile} updateProfile={bloom.updateProfile} jobs={bloom.myJobs} />
               </TabsContent>
             </>
           )}
@@ -156,6 +164,16 @@ export default function Page() {
         onSave={save}
         onDelete={bloom.deleteJob}
       />
+
+      {/* Profile dialog */}
+      <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+        <DialogContent style={{ maxWidth: 560, maxHeight: "90vh", overflowY: "auto" }}>
+          <DialogHeader>
+            <DialogTitle>Your Profile</DialogTitle>
+          </DialogHeader>
+          <ProfileTab profile={bloom.profile} updateProfile={bloom.updateProfile} jobs={bloom.myJobs} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
