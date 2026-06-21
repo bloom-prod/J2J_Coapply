@@ -139,7 +139,7 @@ export default function Page() {
                 <LeetCodeTab userColors={bloom.userColors} />
               </TabsContent>
               <TabsContent value="jobs">
-                <JobsTab posts={bloom.jobPosts} onShare={bloom.shareJob} onDelete={bloom.deleteJobPost} onRefresh={bloom.fetchJobPosts} />
+                <JobsTab posts={bloom.jobPosts} myJobs={bloom.myJobs} onShare={bloom.shareJob} onDelete={bloom.deleteJobPost} onRefresh={bloom.fetchJobPosts} />
               </TabsContent>
               <TabsContent value="resume" style={{ padding: 0 }}>
                 <ResumeTab

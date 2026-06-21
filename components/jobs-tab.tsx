@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import type { JobPost } from "@/lib/types";
+import type { Job, JobPost } from "@/lib/types";
 
 interface Props {
   posts: JobPost[];
+  myJobs: Job[];
   onShare: (data: { company: string; role: string; url: string; location: string; notes: string }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onRefresh: () => Promise<void>;
@@ -18,12 +19,21 @@ interface Props {
 
 const EMPTY = { company: "", role: "", url: "", location: "", notes: "" };
 
-export function JobsTab({ posts, onShare, onDelete, onRefresh }: Props) {
+export function JobsTab({ posts, myJobs, onShare, onDelete, onRefresh }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [hideApplied, setHideApplied] = useState(false);
+
+  const appliedCompanies = new Set(
+    myJobs.map((j) => j.company.trim().toLowerCase())
+  );
+
+  const visiblePosts = hideApplied
+    ? posts.filter((p) => !appliedCompanies.has(p.company.trim().toLowerCase()))
+    : posts;
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -61,7 +71,7 @@ export function JobsTab({ posts, onShare, onDelete, onRefresh }: Props) {
     }
   }
 
-  const uniquePosters = new Set(posts.map((p) => p.ownerUid)).size;
+  const uniquePosters = new Set(visiblePosts.map((p) => p.ownerUid)).size;
 
   return (
     <div>
@@ -70,6 +80,15 @@ export function JobsTab({ posts, onShare, onDelete, onRefresh }: Props) {
         <div style={{ display: "flex", gap: 8 }}>
           <Button variant="outline" size="sm" className="rounded-full" onClick={handleRefresh} disabled={refreshing}>
             <i className="ti ti-refresh" /> {refreshing ? "Refreshing…" : "Refresh"}
+          </Button>
+          <Button
+            variant={hideApplied ? "default" : "outline"}
+            size="sm"
+            className="rounded-full"
+            onClick={() => setHideApplied((v) => !v)}
+            title="Hide companies you've already applied to"
+          >
+            <i className="ti ti-filter" /> Hide Applied
           </Button>
           <Button variant="outline" size="sm" className="rounded-full" onClick={() => setShowForm((v) => !v)}>
             <i className="ti ti-plus" /> Share a Job
@@ -117,7 +136,7 @@ export function JobsTab({ posts, onShare, onDelete, onRefresh }: Props) {
 
       <div className="stats-row" style={{ gridTemplateColumns: "repeat(2, 1fr)", marginTop: 14 }}>
         <div className="stat-card">
-          <div className="stat-num">{posts.length}</div>
+          <div className="stat-num">{visiblePosts.length}</div>
           <div className="stat-label">Open Listings</div>
         </div>
         <div className="stat-card sage">
@@ -126,13 +145,17 @@ export function JobsTab({ posts, onShare, onDelete, onRefresh }: Props) {
         </div>
       </div>
 
-      {posts.length === 0 ? (
+      {visiblePosts.length === 0 ? (
         <div className="feed-card" style={{ marginTop: 14 }}>
-          <div className="feed-empty">No jobs posted yet — be the first to share one! 💼</div>
+          <div className="feed-empty">
+            {hideApplied && posts.length > 0
+              ? "All listed jobs are ones you've already applied to 🎉"
+              : "No jobs posted yet — be the first to share one! 💼"}
+          </div>
         </div>
       ) : (
         <div className="job-board-grid">
-          {posts.map((post) => (
+          {visiblePosts.map((post) => (
             <div key={post.id} className="job-card">
               <div className="job-card-header">
                 <div>
