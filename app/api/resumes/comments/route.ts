@@ -23,7 +23,6 @@ export async function GET(req: Request) {
     const snap = await adminDb
       .collection(COMMENTS)
       .where("resumeId", "==", resumeId)
-      .orderBy("createdAt", "asc")
       .get();
 
     const comments = snap.docs.map((d) => {
@@ -38,6 +37,7 @@ export async function GET(req: Request) {
         resolved: x.resolved === true,
       };
     });
+    comments.sort((a, b) => (a.createdAt > b.createdAt ? 1 : -1));
     return NextResponse.json({ ok: true, comments });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);
