@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { STATUSES, type Job } from "@/lib/types";
-import { fmtDate, isStarred, PRIORITY_ORDER, statusKey } from "@/lib/job-utils";
+import { classifyRole, fmtDate, isStarred, PRIORITY_ORDER, statusKey } from "@/lib/job-utils";
 
 const FILTERS = ["All", ...STATUSES, "⭐"] as const;
 
@@ -125,7 +125,8 @@ export function TrackerTab({
               <th onClick={() => sortBy("role")} style={{ width: "22%" }}>Role {arrow("role")}</th>
               <th onClick={() => sortBy("status")} style={{ width: "12%" }}>Status {arrow("status")}</th>
               <th onClick={() => sortBy("date")} style={{ width: "10%" }}>Applied {arrow("date")}</th>
-              <th onClick={() => sortBy("location")} style={{ width: "14%" }}>Location {arrow("location")}</th>
+              <th onClick={() => sortBy("location")} style={{ width: "12%" }}>Location {arrow("location")}</th>
+              <th style={{ width: "10%" }}>Category</th>
               <th onClick={() => sortBy("priority")} style={{ width: "9%" }}>Priority {arrow("priority")}</th>
               <th style={{ width: "10%" }}>Salary</th>
               <th style={{ width: "6%", textAlign: "right", paddingRight: 12 }}></th>
@@ -154,7 +155,8 @@ export function TrackerTab({
                   <td style={{ color: "var(--text-mid)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={j.role}>{j.role}</td>
                   <td><span className={`pill s-${statusKey(j.status)}`}>{j.status}</span></td>
                   <td style={{ color: "var(--text-light)", fontSize: 12, whiteSpace: "nowrap" }}>{fmtDate(j.date)}</td>
-                  <td style={{ color: "var(--text-light)", fontSize: 12, maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{j.location || "—"}</td>
+                  <td style={{ color: "var(--text-light)", fontSize: 12, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{j.location || "—"}</td>
+                  <td style={{ color: "var(--text-light)", fontSize: 12, whiteSpace: "nowrap" }}>{j.roleCategory || classifyRole(j.role) || "—"}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
                     <span className={`pdot p-${j.priority || "Medium"}`}></span>
                     <span style={{ fontSize: 12, color: "var(--text-mid)" }}>{j.priority || "—"}</span>

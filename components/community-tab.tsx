@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
+  Line,
+  LineChart,
   CartesianGrid,
   Cell,
   Legend,
@@ -274,15 +274,16 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
             <div className="it">Weekly application volume</div>
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={charts.weeklyData} margin={{ left: 0, right: 12, top: 6, bottom: 4 }}>
+                <LineChart data={charts.weeklyData} margin={{ left: 0, right: 12, top: 6, bottom: 4 }}>
                   <CartesianGrid stroke={dark ? "#2E2B3C" : "#F0F5F0"} vertical={false} />
                   <XAxis dataKey="week" tick={chartAxisStyle(dark)} />
                   <YAxis allowDecimals={false} tick={chartAxisStyle(dark)} />
                   <Tooltip content={(p) => <ChartTip {...p} dark={dark} />} />
+                  <Legend wrapperStyle={{ fontSize: 12, color: dark ? "#A89EC0" : "#9E9088" }} />
                   {charts.weeklyUsers.map((name, i) => (
-                    <Area key={name} dataKey={name} type="monotone" stroke={uc(name, i)} strokeWidth={2} fill={`${uc(name, i)}22`} stackId="1" />
+                    <Line key={name} dataKey={name} type="monotone" stroke={uc(name, i)} strokeWidth={2} dot={false} />
                   ))}
-                </AreaChart>
+                </LineChart>
               </ResponsiveContainer>
             </div>
           </div>
