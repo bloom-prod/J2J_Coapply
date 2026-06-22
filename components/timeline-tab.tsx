@@ -40,7 +40,6 @@ export function TimelineTab({ jobs, onEdit }: { jobs: Job[]; onEdit: (j: Job) =>
                   <span className="tl-date">{fmtDate(j.date)}</span>
                   {j.followup && <span className="tl-date" style={{ color: "var(--sage-400)" }}>· follow-up {fmtDate(j.followup)}</span>}
                 </div>
-                {j.notes && <div className="tl-notes">{j.notes}</div>}
               </div>
               <button className="abtn" onClick={() => onEdit(j)} title="Edit"><i className="ti ti-edit" /></button>
             </div>
