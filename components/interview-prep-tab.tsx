@@ -41,6 +41,7 @@ export function InterviewPrepTab({
   const [postingComment, setPostingComment] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  const [companySearch, setCompanySearch] = useState("");
 
   const myUid = auth.currentUser?.uid;
 
@@ -100,10 +101,12 @@ export function InterviewPrepTab({
     ? posts.filter((p) => p.company === selectedCompany)
     : posts;
 
-  const companyGroups = allCompanies.map((c) => ({
-    company: c,
-    count: posts.filter((p) => p.company === c).length,
-  }));
+  const companyGroups = allCompanies
+    .filter((c) => c.toLowerCase().includes(companySearch.toLowerCase()))
+    .map((c) => ({
+      company: c,
+      count: posts.filter((p) => p.company === c).length,
+    }));
 
   return (
     <div>
@@ -135,32 +138,25 @@ export function InterviewPrepTab({
       </div>
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="job-share-form">
-          <div className="fg">
-            <Label htmlFor="ip-title">Title *</Label>
+        <form onSubmit={handleSubmit} className="interview-prep-form">
+          <div className="interview-prep-form-group">
+            <Label htmlFor="ip-title" className="interview-prep-label">Title *</Label>
             <Input
               id="ip-title"
               placeholder="e.g., System Design Interview Tips"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              className="interview-prep-input"
             />
           </div>
-          <div className="job-share-form-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
-            <div className="fg">
-              <Label htmlFor="ip-company">Company *</Label>
+          <div className="interview-prep-form-row">
+            <div className="interview-prep-form-group">
+              <Label htmlFor="ip-company" className="interview-prep-label">Company *</Label>
               <select
                 id="ip-company"
                 value={company}
                 onChange={(e) => setCompany(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  borderRadius: "6px",
-                  border: "1px solid var(--border)",
-                  backgroundColor: "var(--card-bg)",
-                  color: "var(--text-dark)",
-                  fontSize: "13px",
-                }}
+                className="interview-prep-select"
               >
                 <option value="general">General</option>
                 {companies.map((c) => (
@@ -171,27 +167,18 @@ export function InterviewPrepTab({
               </select>
             </div>
           </div>
-          <div className="fg">
-            <Label htmlFor="ip-content">Content *</Label>
+          <div className="interview-prep-form-group">
+            <Label htmlFor="ip-content" className="interview-prep-label">Content *</Label>
             <textarea
               id="ip-content"
               placeholder="Share your interview prep materials..."
               value={content}
               onChange={(e) => setContent(e.target.value)}
               rows={5}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: "6px",
-                border: "1px solid var(--border)",
-                backgroundColor: "var(--card-bg)",
-                color: "var(--text-dark)",
-                fontSize: "13px",
-                fontFamily: "inherit",
-              }}
+              className="interview-prep-textarea"
             />
           </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <div className="interview-prep-form-actions">
             <Button type="submit" size="sm" className="rounded-full" disabled={saving}>
               {saving ? "Creating…" : "Create Post"}
             </Button>
@@ -217,6 +204,12 @@ export function InterviewPrepTab({
         {/* Company Filter */}
         <div className="interview-prep-sidebar">
           <div className="interview-prep-sidebar-title">Companies</div>
+          <Input
+            placeholder="Search..."
+            value={companySearch}
+            onChange={(e) => setCompanySearch(e.target.value)}
+            className="interview-prep-search"
+          />
           <button
             className={`interview-prep-company-btn ${selectedCompany === null ? "active" : ""}`}
             onClick={() => setSelectedCompany(null)}
