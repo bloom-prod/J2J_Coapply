@@ -26,6 +26,7 @@ export function JobsTab({ posts, myJobs, onShare, onDelete, onRefresh }: Props) 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [hideApplied, setHideApplied] = useState(false);
+  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
 
   const appliedCompanies = new Set(
     myJobs.map((j) => j.company.trim().toLowerCase())
@@ -180,8 +181,23 @@ export function JobsTab({ posts, myJobs, onShare, onDelete, onRefresh }: Props) 
                   <i className="ti ti-map-pin" style={{ marginRight: 4 }} />{post.location}
                 </div>
               )}
+
               {post.notes && (
-                <div className="job-card-notes">{post.notes}</div>
+                <button
+                  className="job-card-notes-btn"
+                  onClick={() => setExpandedPostId(expandedPostId === post.id ? null : post.id)}
+                  style={{ width: "100%" }}
+                >
+                  <i className="ti ti-note" style={{ marginRight: 6 }} />
+                  Notes
+                  <i className={`ti ti-chevron-${expandedPostId === post.id ? "up" : "down"}`} style={{ marginLeft: "auto" }} />
+                </button>
+              )}
+
+              {expandedPostId === post.id && post.notes && (
+                <div className="job-card-notes-expanded">
+                  {post.notes}
+                </div>
               )}
 
               <div className="job-card-footer">

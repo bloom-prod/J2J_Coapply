@@ -301,8 +301,13 @@ table.bloom tr:hover td{background:var(--pink-50);}
 .job-card-by{font-size:11px;color:var(--text-light);}
 .job-apply-btn{display:inline-flex;align-items:center;gap:4px;background:var(--success);color:#fff;font-size:12px;font-weight:600;padding:6px 14px;border-radius:20px;text-decoration:none;transition:opacity .15s;}
 .job-apply-btn:hover{opacity:.85;}
+.job-card-notes-btn{display:flex;align-items:center;gap:8px;background:var(--pink-50);border:1px solid var(--pink-100);color:var(--text-dark);border-radius:6px;padding:8px 10px;font-size:12px;font-weight:500;cursor:pointer;transition:background .15s,border-color .15s;}
+.job-card-notes-btn:hover{background:var(--pink-100);}
+.job-card-notes-expanded{background:var(--pink-50);border:1px solid var(--pink-100);border-radius:6px;padding:10px;font-size:12px;color:var(--text-mid);line-height:1.5;margin-top:4px;}
 .dark .job-card{border-color:var(--pink-100);}
-.dark .job-card-notes{background:var(--pink-50);}
+.dark .job-card-notes-btn{background:var(--pink-50);border-color:var(--pink-100);color:var(--text-dark);}
+.dark .job-card-notes-btn:hover{background:var(--pink-100);}
+.dark .job-card-notes-expanded{background:var(--pink-50);border-color:var(--pink-100);}
 
 /* ---- Resume Tab ---- */
 .dark .resume-comment-active{background:var(--pink-50);border-color:var(--pink-100);}
