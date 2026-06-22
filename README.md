@@ -7,7 +7,7 @@ shares one community garden with pooled stats, charts, a leaderboard, and a live
 - **Charts:** Recharts (shadcn chart style)
 - **Backend:** Next.js **Route Handlers** (`app/api/*`) using `firebase-admin`
 - **Data/Auth:** Firebase **Firestore** + **Email/Password Authentication**
-- **Hosting:** Netlify (or Vercel)
+- **Hosting:** Netlify (or Vercel) (acc Pandey's laptop :P)
 
 ## Architecture
 
