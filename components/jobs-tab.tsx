@@ -155,68 +155,137 @@ export function JobsTab({ posts, myJobs, onShare, onDelete, onRefresh }: Props) 
           </div>
         </div>
       ) : (
-        <div className="job-board-grid">
-          {visiblePosts.map((post) => (
-            <div key={post.id} className="job-card">
-              <div className="job-card-header">
-                <div>
-                  <div className="job-card-company">{post.company}</div>
-                  <div className="job-card-role">{post.role}</div>
+        <>
+          <div className="job-board-grid">
+            {visiblePosts.map((post) => (
+              <div
+                key={post.id}
+                className="job-card"
+                onClick={() => setExpandedPostId(expandedPostId === post.id ? null : post.id)}
+                style={{ cursor: "pointer" }}
+              >
+                <div className="job-card-header">
+                  <div>
+                    <div className="job-card-company">{post.company}</div>
+                    <div className="job-card-role">{post.role}</div>
+                  </div>
+                  {post.ownerUid === myUid && (
+                    <button
+                      className="abtn"
+                      title="Remove"
+                      disabled={deletingId === post.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(post.id);
+                      }}
+                      style={{ flexShrink: 0 }}
+                    >
+                      <i className="ti ti-trash" />
+                    </button>
+                  )}
                 </div>
-                {post.ownerUid === myUid && (
-                  <button
-                    className="abtn"
-                    title="Remove"
-                    disabled={deletingId === post.id}
-                    onClick={() => handleDelete(post.id)}
-                    style={{ flexShrink: 0 }}
+
+                {post.location && (
+                  <div className="job-card-meta">
+                    <i className="ti ti-map-pin" style={{ marginRight: 4 }} />{post.location}
+                  </div>
+                )}
+
+                {post.notes && (
+                  <div className="job-card-notes-preview">
+                    <i className="ti ti-note" style={{ marginRight: 6 }} />
+                    Click to view notes
+                  </div>
+                )}
+
+                <div className="job-card-footer">
+                  <span className="job-card-by">
+                    Shared by <strong>{post.ownerUid === myUid ? "you" : post.ownerName}</strong>
+                    {post.postedAt && <> · {timeAgo(new Date(post.postedAt))}</>}
+                  </span>
+                  <a
+                    href={post.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="job-apply-btn"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <i className="ti ti-trash" />
-                  </button>
+                    Apply <i className="ti ti-arrow-up-right" />
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {expandedPostId && (
+            <div
+              className="job-modal-overlay"
+              onClick={() => setExpandedPostId(null)}
+            >
+              <div
+                className="job-modal-card"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  className="abtn"
+                  style={{ position: "absolute", top: 12, right: 12 }}
+                  onClick={() => setExpandedPostId(null)}
+                >
+                  <i className="ti ti-x" />
+                </button>
+
+                {visiblePosts.find((p) => p.id === expandedPostId) && (
+                  <div>
+                    <div className="job-modal-header">
+                      <div>
+                        <div className="job-modal-company">
+                          {visiblePosts.find((p) => p.id === expandedPostId)?.company}
+                        </div>
+                        <div className="job-modal-role">
+                          {visiblePosts.find((p) => p.id === expandedPostId)?.role}
+                        </div>
+                      </div>
+                    </div>
+
+                    {visiblePosts.find((p) => p.id === expandedPostId)?.location && (
+                      <div className="job-modal-meta">
+                        <i className="ti ti-map-pin" style={{ marginRight: 4 }} />
+                        {visiblePosts.find((p) => p.id === expandedPostId)?.location}
+                      </div>
+                    )}
+
+                    {visiblePosts.find((p) => p.id === expandedPostId)?.notes && (
+                      <div className="job-modal-notes">
+                        <div className="job-modal-notes-label">
+                          <i className="ti ti-note" style={{ marginRight: 6 }} />
+                          Notes
+                        </div>
+                        <div className="job-modal-notes-content">
+                          {visiblePosts.find((p) => p.id === expandedPostId)?.notes}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="job-modal-footer">
+                      <div className="job-modal-by">
+                        Shared by <strong>{visiblePosts.find((p) => p.id === expandedPostId)?.ownerUid === myUid ? "you" : visiblePosts.find((p) => p.id === expandedPostId)?.ownerName}</strong>
+                        {visiblePosts.find((p) => p.id === expandedPostId)?.postedAt && <> · {timeAgo(new Date(visiblePosts.find((p) => p.id === expandedPostId)?.postedAt!))}</>}
+                      </div>
+                      <a
+                        href={visiblePosts.find((p) => p.id === expandedPostId)?.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="job-apply-btn"
+                      >
+                        Apply <i className="ti ti-arrow-up-right" />
+                      </a>
+                    </div>
+                  </div>
                 )}
               </div>
-
-              {post.location && (
-                <div className="job-card-meta">
-                  <i className="ti ti-map-pin" style={{ marginRight: 4 }} />{post.location}
-                </div>
-              )}
-
-              {post.notes && (
-                <button
-                  className="job-card-notes-btn"
-                  onClick={() => setExpandedPostId(expandedPostId === post.id ? null : post.id)}
-                  style={{ width: "100%" }}
-                >
-                  <i className="ti ti-note" style={{ marginRight: 6 }} />
-                  Notes
-                  <i className={`ti ti-chevron-${expandedPostId === post.id ? "up" : "down"}`} style={{ marginLeft: "auto" }} />
-                </button>
-              )}
-
-              {expandedPostId === post.id && post.notes && (
-                <div className="job-card-notes-expanded">
-                  {post.notes}
-                </div>
-              )}
-
-              <div className="job-card-footer">
-                <span className="job-card-by">
-                  Shared by <strong>{post.ownerUid === myUid ? "you" : post.ownerName}</strong>
-                  {post.postedAt && <> · {timeAgo(new Date(post.postedAt))}</>}
-                </span>
-                <a
-                  href={post.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="job-apply-btn"
-                >
-                  Apply <i className="ti ti-arrow-up-right" />
-                </a>
-              </div>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </div>
   );
