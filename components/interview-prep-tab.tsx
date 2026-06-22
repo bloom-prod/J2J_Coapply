@@ -27,6 +27,7 @@ export function InterviewPrepTab({
   onCreate,
   onDelete,
   onAddComment,
+  onFetchComments,
   onRefresh,
 }: Props) {
   const [showForm, setShowForm] = useState(false);
@@ -249,9 +250,11 @@ export function InterviewPrepTab({
                 <div key={post.id} className="interview-prep-post-card">
                   <div
                     className="interview-prep-post-header"
-                    onClick={() =>
-                      setExpandedPostId(expandedPostId === post.id ? null : post.id)
-                    }
+                    onClick={() => {
+                      const newId = expandedPostId === post.id ? null : post.id;
+                      setExpandedPostId(newId);
+                      if (newId) onFetchComments(newId);
+                    }}
                     style={{ cursor: "pointer" }}
                   >
                     <div className="interview-prep-post-title">{post.title}</div>

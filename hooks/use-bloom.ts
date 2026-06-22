@@ -548,6 +548,7 @@ export function useBloom() {
     fetchJobPosts,
     shareJob,
     deleteJobPost,
+    fetchInterviewPrepPosts,
     createInterviewPrepPost,
     deleteInterviewPrepPost,
     fetchInterviewPrepComments,

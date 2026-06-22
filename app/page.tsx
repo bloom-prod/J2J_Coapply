@@ -151,6 +151,7 @@ export default function Page() {
                   onCreate={bloom.createInterviewPrepPost}
                   onDelete={bloom.deleteInterviewPrepPost}
                   onAddComment={bloom.addInterviewPrepComment}
+                  onFetchComments={bloom.fetchInterviewPrepComments}
                   onRefresh={bloom.fetchInterviewPrepPosts}
                 />
               </TabsContent>
