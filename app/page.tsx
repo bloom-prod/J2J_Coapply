@@ -8,6 +8,7 @@ import { InsightsTab } from "@/components/insights-tab";
 import { CommunityTab } from "@/components/community-tab";
 import { LeetCodeTab } from "@/components/leetcode-tab";
 import { JobsTab } from "@/components/jobs-tab";
+import { InterviewPrepTab } from "@/components/interview-prep-tab";
 import { ProfileTab } from "@/components/profile-tab";
 import { ResumeTab } from "@/components/resume-tab";
 import { ApplicationDialog } from "@/components/application-dialog";
@@ -84,6 +85,7 @@ export default function Page() {
     ["insights", "📊 Insights"],
     ["leetcode", "💻 LeetCode"],
     ["jobs", "💼 Jobs"],
+    ["interview-prep", "🎤 Interview Prep"],
     ["resume", "📄 Resumes"],
     ["community", "🌍 Community"],
   ] as const;
@@ -140,6 +142,17 @@ export default function Page() {
               </TabsContent>
               <TabsContent value="jobs">
                 <JobsTab posts={bloom.jobPosts} myJobs={bloom.myJobs} onShare={bloom.shareJob} onDelete={bloom.deleteJobPost} onRefresh={bloom.fetchJobPosts} />
+              </TabsContent>
+              <TabsContent value="interview-prep">
+                <InterviewPrepTab
+                  posts={bloom.interviewPrepPosts}
+                  comments={bloom.interviewPrepComments}
+                  companies={[...new Set(bloom.myJobs.map((j) => j.company))]}
+                  onCreate={bloom.createInterviewPrepPost}
+                  onDelete={bloom.deleteInterviewPrepPost}
+                  onAddComment={bloom.addInterviewPrepComment}
+                  onRefresh={bloom.fetchInterviewPrepPosts}
+                />
               </TabsContent>
               <TabsContent value="resume" style={{ padding: 0 }}>
                 <ResumeTab

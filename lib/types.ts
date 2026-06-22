@@ -126,6 +126,27 @@ export interface ResumeComment {
   resolved: boolean;
 }
 
+export interface InterviewPrepPost {
+  id: string;
+  title: string;
+  content: string;
+  company: string; // company name or "general"
+  ownerUid: string;
+  ownerName: string;
+  createdAt: string; // ISO datetime
+  updatedAt: string; // ISO datetime
+  commentCount?: number;
+}
+
+export interface InterviewPrepComment {
+  id: string;
+  postId: string;
+  userId: string;
+  userName: string;
+  text: string;
+  createdAt: string; // ISO datetime
+}
+
 export interface CommunityStats {
   ok: boolean;
   totalApps: number;

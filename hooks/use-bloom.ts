@@ -22,7 +22,7 @@ import {
 } from "firebase/firestore";
 import { toast } from "sonner";
 import { auth, db } from "@/lib/firebase";
-import type { FeedEvent, Job, JobPost, Resume, UserProfile } from "@/lib/types";
+import type { FeedEvent, Job, JobPost, Resume, UserProfile, InterviewPrepPost, InterviewPrepComment } from "@/lib/types";
 
 const USER_COLORS = ["#E07BA0","#7BB87B","#78AEDE","#DDB060","#A87BD4","#5FC5C5","#E8895A"];
 const NAME_COLOR_OVERRIDES: Record<string, string> = { "Shruti": "#FF69B4" }; // hot pink
@@ -107,6 +107,8 @@ export function useBloom() {
   const [serverJobs, setServerJobs] = useState<Job[]>([]);
   const [feed, setFeed] = useState<FeedEvent[]>([]);
   const [jobPosts, setJobPosts] = useState<JobPost[]>([]);
+  const [interviewPrepPosts, setInterviewPrepPosts] = useState<InterviewPrepPost[]>([]);
+  const [interviewPrepComments, setInterviewPrepComments] = useState<Record<string, InterviewPrepComment[]>>({});
   const [pending, setPending] = useState<Pending>(EMPTY_PENDING);
   const [userProfiles, setUserProfiles] = useState<Map<string, { name: string; color: string }> | null>(null);
   const firstSnap = useRef(true);
@@ -135,6 +137,9 @@ export function useBloom() {
       if (!u) {
         setServerJobs([]);
         setFeed([]);
+        setJobPosts([]);
+        setInterviewPrepPosts([]);
+        setInterviewPrepComments({});
         setPending(EMPTY_PENDING);
         setUserProfiles(null);
         setLoading(true);
@@ -446,6 +451,78 @@ export function useBloom() {
     await fetchJobPosts();
   }, [fetchJobPosts]);
 
+  const fetchInterviewPrepPosts = useCallback(async () => {
+    if (!auth.currentUser) return;
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch("/api/interview-prep", { headers: { Authorization: `Bearer ${token}` } });
+      const d = await res.json();
+      if (d.ok) setInterviewPrepPosts(d.posts as InterviewPrepPost[]);
+    } catch (e) {
+      console.error("fetchInterviewPrepPosts error", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user) fetchInterviewPrepPosts();
+    else setInterviewPrepPosts([]);
+  }, [user, fetchInterviewPrepPosts]);
+
+  const createInterviewPrepPost = useCallback(async (data: { title: string; content: string; company: string }) => {
+    if (!auth.currentUser) return;
+    const token = await auth.currentUser.getIdToken();
+    const res = await fetch("/api/interview-prep", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const d = await res.json();
+    if (!res.ok || !d.ok) throw new Error(d.error || "Failed to create post");
+    await fetchInterviewPrepPosts();
+  }, [fetchInterviewPrepPosts]);
+
+  const deleteInterviewPrepPost = useCallback(async (id: string) => {
+    if (!auth.currentUser) return;
+    const token = await auth.currentUser.getIdToken();
+    const res = await fetch("/api/interview-prep", {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const d = await res.json();
+    if (!res.ok || !d.ok) throw new Error(d.error || "Failed to delete post");
+    await fetchInterviewPrepPosts();
+  }, [fetchInterviewPrepPosts]);
+
+  const fetchInterviewPrepComments = useCallback(async (postId: string) => {
+    if (!auth.currentUser) return;
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch(`/api/interview-prep/comments?postId=${postId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setInterviewPrepComments((prev) => ({ ...prev, [postId]: d.comments as InterviewPrepComment[] }));
+      }
+    } catch (e) {
+      console.error("fetchInterviewPrepComments error", e);
+    }
+  }, []);
+
+  const addInterviewPrepComment = useCallback(async (postId: string, text: string) => {
+    if (!auth.currentUser) return;
+    const token = await auth.currentUser.getIdToken();
+    const res = await fetch("/api/interview-prep/comments", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ postId, text }),
+    });
+    const d = await res.json();
+    if (!res.ok || !d.ok) throw new Error(d.error || "Failed to add comment");
+    await fetchInterviewPrepComments(postId);
+  }, [fetchInterviewPrepComments]);
+
   const signOut = useCallback(() => fbSignOut(auth), []);
 
   const userColors = useMemo(
@@ -461,6 +538,8 @@ export function useBloom() {
     myJobs,
     feed,
     jobPosts,
+    interviewPrepPosts,
+    interviewPrepComments,
     userColors,
     createJob,
     updateJob,
@@ -469,6 +548,10 @@ export function useBloom() {
     fetchJobPosts,
     shareJob,
     deleteJobPost,
+    createInterviewPrepPost,
+    deleteInterviewPrepPost,
+    fetchInterviewPrepComments,
+    addInterviewPrepComment,
     resumes,
     fetchResumes,
     uploadResume,

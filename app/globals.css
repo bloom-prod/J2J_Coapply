@@ -318,6 +318,36 @@ table.bloom tr:hover td{background:var(--pink-50);}
 .dark .job-modal-card{box-shadow:0 20px 60px rgba(0,0,0,.5);}
 .dark .job-modal-notes-content{background:var(--pink-50);border-color:var(--pink-100);}
 
+/* ---- Interview Prep Tab ---- */
+.interview-prep-sidebar{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:12px;width:140px;max-height:fit-content;position:sticky;top:20px;}
+.interview-prep-sidebar-title{font-size:12px;font-weight:600;color:var(--text-dark);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;}
+.interview-prep-company-btn{display:block;width:100%;text-align:left;padding:6px 8px;font-size:12px;color:var(--text-mid);background:transparent;border:none;cursor:pointer;border-radius:4px;transition:background .15s;}
+.interview-prep-company-btn:hover{background:var(--pink-50);}
+.interview-prep-company-btn.active{background:var(--pink-50);color:var(--text-dark);font-weight:600;}
+.interview-prep-posts{display:flex;flex-direction:column;gap:10px;}
+.interview-prep-post-card{background:var(--card-bg);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.interview-prep-post-header{padding:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;transition:background .15s;}
+.interview-prep-post-header:hover{background:var(--pink-50);}
+.interview-prep-post-title{font-size:14px;font-weight:600;color:var(--text-dark);}
+.interview-prep-post-meta{padding:0 12px 8px;display:flex;align-items:center;gap:8px;font-size:11px;flex-wrap:wrap;}
+.interview-prep-company-tag{background:var(--pink-50);border:1px solid var(--pink-100);color:var(--text-dark);padding:2px 8px;border-radius:12px;font-weight:500;}
+.interview-prep-by{color:var(--text-light);}
+.interview-prep-time{color:var(--text-light);}
+.interview-prep-post-expanded{padding:12px;border-top:1px solid var(--border);background:var(--background);}
+.interview-prep-post-content{font-size:13px;color:var(--text-mid);line-height:1.6;margin-bottom:16px;white-space:pre-wrap;word-break:break-word;}
+.interview-prep-comments{border-top:1px solid var(--border);padding-top:12px;}
+.interview-prep-comments-title{font-size:12px;font-weight:600;color:var(--text-dark);margin-bottom:10px;}
+.interview-prep-comments-list{display:flex;flex-direction:column;gap:8px;margin-bottom:12px;}
+.interview-prep-comment{background:var(--card-bg);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:12px;}
+.interview-prep-comment-header{display:flex;gap:6px;align-items:center;margin-bottom:4px;}
+.interview-prep-comment-header strong{color:var(--text-dark);}
+.interview-prep-comment-time{color:var(--text-light);font-size:10px;}
+.interview-prep-comment-text{color:var(--text-mid);line-height:1.4;}
+.interview-prep-comment-form{padding-top:8px;border-top:1px solid var(--border);}
+.dark .interview-prep-sidebar{border-color:var(--border);}
+.dark .interview-prep-post-card{border-color:var(--border);}
+.dark .interview-prep-comment{border-color:var(--border);}
+
 /* ---- Resume Tab ---- */
 .dark .resume-comment-active{background:var(--pink-50);border-color:var(--pink-100);}
 .dark .resume-comment-resolved{background:var(--sage-50);border-color:var(--sage-100);}
