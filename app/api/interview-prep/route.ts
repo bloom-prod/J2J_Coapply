@@ -1,34 +1,46 @@
 import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
-import { adminDb } from "@/lib/firebase-admin";
+import * as admin from "firebase-admin";
 import { requireUser, HttpError } from "@/lib/auth-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const INTERVIEW_PREP = "interviewPrep";
-
 function fail(status: number, error: string) {
   return NextResponse.json({ ok: false, error }, { status });
+}
+
+function getDb() {
+  if (!admin.apps.length) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY || "{}");
+    admin.initializeApp({ credential: admin.credential.cert(serviceAccount), databaseURL: process.env.FIREBASE_DATABASE_URL });
+  }
+  return admin.database();
 }
 
 export async function GET(req: Request) {
   try {
     await requireUser(req);
-    const snap = await adminDb.collection(INTERVIEW_PREP).orderBy("createdAt", "desc").get();
-    const posts = snap.docs.map((d) => {
-      const x = d.data();
-      return {
-        id: d.id,
-        title: x.title || "",
-        content: x.content || "",
-        company: x.company || "general",
-        ownerUid: x.ownerUid || "",
-        ownerName: x.ownerName || "Someone",
-        createdAt: x.createdAt?.toDate?.()?.toISOString?.() ?? "",
-        updatedAt: x.updatedAt?.toDate?.()?.toISOString?.() ?? "",
-      };
-    });
+    const db = getDb();
+    const snapshot = await db.ref("interviewPrep").get();
+
+    if (!snapshot.exists()) {
+      return NextResponse.json({ ok: true, posts: [] });
+    }
+
+    const postsObj = snapshot.val();
+    const posts = Object.entries(postsObj || {})
+      .map(([id, data]: [string, any]) => ({
+        id,
+        title: data.title || "",
+        content: data.content || "",
+        company: data.company || "general",
+        ownerUid: data.ownerUid || "",
+        ownerName: data.ownerName || "Someone",
+        createdAt: data.createdAt || new Date().toISOString(),
+        updatedAt: data.updatedAt || new Date().toISOString(),
+      }))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
     return NextResponse.json({ ok: true, posts });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);
@@ -47,8 +59,11 @@ export async function POST(req: Request) {
     if (!title) throw new HttpError(400, "Title is required");
     if (!content) throw new HttpError(400, "Content is required");
 
-    const now = FieldValue.serverTimestamp();
-    const ref = await adminDb.collection(INTERVIEW_PREP).add({
+    const db = getDb();
+    const now = new Date().toISOString();
+    const newRef = db.ref("interviewPrep").push();
+
+    await newRef.set({
       title,
       content,
       company,
@@ -58,7 +73,7 @@ export async function POST(req: Request) {
       updatedAt: now,
     });
 
-    return NextResponse.json({ ok: true, id: ref.id });
+    return NextResponse.json({ ok: true, id: newRef.key });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);
     return fail(500, err instanceof Error ? err.message : "Server error");
@@ -72,12 +87,16 @@ export async function DELETE(req: Request) {
     const id = String(body.id || "").trim();
     if (!id) throw new HttpError(400, "Missing post id");
 
-    const ref = adminDb.collection(INTERVIEW_PREP).doc(id);
-    const snap = await ref.get();
-    if (!snap.exists) return NextResponse.json({ ok: true });
-    const existing = snap.data() as Record<string, unknown>;
+    const db = getDb();
+    const postRef = db.ref(`interviewPrep/${id}`);
+    const snapshot = await postRef.get();
+
+    if (!snapshot.exists()) return NextResponse.json({ ok: true });
+
+    const existing = snapshot.val();
     if (existing.ownerUid !== user.uid) throw new HttpError(403, "You can only delete your own posts");
-    await ref.delete();
+
+    await postRef.remove();
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);
