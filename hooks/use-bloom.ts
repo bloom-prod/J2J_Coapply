@@ -28,22 +28,9 @@ const USER_COLORS = ["#E07BA0","#7BB87B","#78AEDE","#DDB060","#A87BD4","#5FC5C5"
 const NAME_COLOR_OVERRIDES: Record<string, string> = { "Shruti": "#FF69B4" }; // hot pink
 
 async function ensureUserProfile(uid: string, name: string, email: string | null) {
-  const ref = doc(db, "userProfiles", uid);
-  const snap = await getDoc(ref);
-  if (snap.exists()) {
-    // Keep name overrides authoritative even for existing profiles.
-    const override = NAME_COLOR_OVERRIDES[name];
-    if (override && (snap.data() as { color?: string }).color !== override) {
-      await setDoc(ref, { color: override }, { merge: true });
-    }
-    return;
-  }
-  const allSnap = await getDocs(collection(db, "userProfiles"));
-  const usedColors = new Set(allSnap.docs.map((d) => (d.data() as { color: string }).color));
-  const color = NAME_COLOR_OVERRIDES[name]
-    ?? USER_COLORS.find((c) => !usedColors.has(c))
-    ?? USER_COLORS[allSnap.size % USER_COLORS.length];
-  await setDoc(ref, { name, color, email });
+  // Disabled Firestore access - user profiles not stored in Firestore
+  // Just using static color system instead
+  return;
 }
 
 function tsToISO(t: unknown): string {
@@ -114,15 +101,14 @@ export function useBloom() {
   const firstSnap = useRef(true);
 
   // ---- user profiles (colors + verification) — only subscribe once authenticated ----
+  // Disabled Firestore access - using static user colors instead
   useEffect(() => {
     if (!user) return;
-    return onSnapshot(
-      collection(db, "userProfiles"),
-      (snap) => {
-        setUserProfiles(new Map(snap.docs.map((d) => [d.id, d.data() as { name: string; color: string }])));
-      },
-      (err) => console.error("userProfiles snapshot error", err)
-    );
+    // Create a basic user profile map with static colors
+    const basicProfile = new Map([
+      [user.displayName || user.email || "Someone", { name: user.displayName || user.email || "Someone", color: USER_COLORS[0] }],
+    ]);
+    setUserProfiles(basicProfile);
   }, [user]);
 
   // ---- auth ----

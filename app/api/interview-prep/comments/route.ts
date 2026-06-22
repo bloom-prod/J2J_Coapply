@@ -1,20 +1,15 @@
 import { NextResponse } from "next/server";
-import * as admin from "firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
+import { adminDb } from "@/lib/firebase-admin";
 import { requireUser, HttpError } from "@/lib/auth-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const COLLECTION = "interviewPrepComments";
+
 function fail(status: number, error: string) {
   return NextResponse.json({ ok: false, error }, { status });
-}
-
-function getDb() {
-  if (!admin.apps.length) {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY || "{}");
-    admin.initializeApp({ credential: admin.credential.cert(serviceAccount), databaseURL: process.env.FIREBASE_DATABASE_URL });
-  }
-  return admin.database();
 }
 
 export async function GET(req: Request) {
@@ -25,24 +20,23 @@ export async function GET(req: Request) {
 
     if (!postId) throw new HttpError(400, "Missing postId");
 
-    const db = getDb();
-    const snapshot = await db.ref("interviewPrepComments").get();
+    const snap = await adminDb
+      .collection(COLLECTION)
+      .where("postId", "==", postId)
+      .get();
 
-    if (!snapshot.exists()) {
-      return NextResponse.json({ ok: true, comments: [] });
-    }
-
-    const commentsObj = snapshot.val();
-    const comments = Object.entries(commentsObj || {})
-      .filter(([, data]: [string, any]) => data.postId === postId)
-      .map(([id, data]: [string, any]) => ({
-        id,
-        postId: data.postId || "",
-        userId: data.userId || "",
-        userName: data.userName || "Someone",
-        text: data.text || "",
-        createdAt: data.createdAt || new Date().toISOString(),
-      }))
+    const comments = snap.docs
+      .map((d) => {
+        const x = d.data();
+        return {
+          id: d.id,
+          postId: x.postId || "",
+          userId: x.userId || "",
+          userName: x.userName || "Someone",
+          text: x.text || "",
+          createdAt: x.createdAt?.toDate?.()?.toISOString?.() ?? "",
+        };
+      })
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
     return NextResponse.json({ ok: true, comments });
@@ -62,19 +56,15 @@ export async function POST(req: Request) {
     if (!postId) throw new HttpError(400, "Missing postId");
     if (!text) throw new HttpError(400, "Comment text is required");
 
-    const db = getDb();
-    const now = new Date().toISOString();
-    const newRef = db.ref("interviewPrepComments").push();
-
-    await newRef.set({
+    const ref = await adminDb.collection(COLLECTION).add({
       postId,
       userId: user.uid,
       userName: user.name,
       text,
-      createdAt: now,
+      createdAt: FieldValue.serverTimestamp(),
     });
 
-    return NextResponse.json({ ok: true, id: newRef.key });
+    return NextResponse.json({ ok: true, id: ref.id });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);
     return fail(500, err instanceof Error ? err.message : "Server error");
