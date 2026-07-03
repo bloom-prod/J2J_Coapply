@@ -202,6 +202,7 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
   const leaderboard = useMemo(() => {
     const by: Record<string, { uid: string; name: string; total: number; interviews: number; offers: number; responded: number }> = {};
     allJobs.forEach((j) => {
+      if (j.status === "Want to Apply") return; // saved jobs don't count
       const uid = j.ownerUid || "?";
       if (!by[uid]) by[uid] = { uid, name: j.ownerName || "Someone", total: 0, interviews: 0, offers: 0, responded: 0 };
       const u = by[uid];
@@ -210,7 +211,7 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
       if (j.status === "Offer") u.offers++;
       if (j.status !== "Applied" && j.status !== "Ghosted") u.responded++;
     });
-    return Object.values(by).sort((a, b) => b.offers - a.offers || b.interviews - a.interviews || b.total - a.total);
+    return Object.values(by).sort((a, b) => b.total - a.total);
   }, [allJobs]);
 
   const dark = useDarkMode();
