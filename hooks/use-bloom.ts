@@ -104,35 +104,38 @@ export function useBloom() {
   const [uidNameMap, setUidNameMap] = useState<Map<string, string>>(new Map());
   const firstSnap = useRef(true);
 
-  // ---- user profiles — subscribe to get uid→name map for live name resolution ----
+  // ---- user profiles — fetch uid→name map for live name resolution ----
+  const fetchUserProfiles = useCallback(async () => {
+    try {
+      const snap = await getDocs(collection(db, "userProfiles"));
+      const names = new Map<string, string>();
+      const profiles = new Map<string, { name: string; color: string }>();
+      snap.docs.forEach((d, i) => {
+        const data = d.data();
+        const name = (data.name as string) || "Someone";
+        const color = NAME_COLOR_OVERRIDES[name] || (data.color as string) || USER_COLORS[i % USER_COLORS.length];
+        names.set(d.id, name);
+        profiles.set(d.id, { name, color });
+      });
+      setUidNameMap(names);
+      setUserProfiles(profiles);
+    } catch {
+      // Fallback: use current user info if fetch fails
+      const u = auth.currentUser;
+      if (!u) return;
+      const name = u.displayName || u.email || "Someone";
+      setUidNameMap(new Map([[u.uid, name]]));
+      setUserProfiles(new Map([[u.uid, { name, color: USER_COLORS[0] }]]));
+    }
+  }, []);
+
   useEffect(() => {
-    if (!user) return;
-    const unsub = onSnapshot(
-      collection(db, "userProfiles"),
-      (snap) => {
-        const names = new Map<string, string>();
-        const profiles = new Map<string, { name: string; color: string }>();
-        snap.docs.forEach((d, i) => {
-          const data = d.data();
-          const name = (data.name as string) || "Someone";
-          const color = NAME_COLOR_OVERRIDES[name] || (data.color as string) || USER_COLORS[i % USER_COLORS.length];
-          names.set(d.id, name);
-          profiles.set(d.id, { name, color });
-        });
-        setUidNameMap(names);
-        setUserProfiles(profiles);
-      },
-      () => {
-        // Fallback: use current user info if subscription fails
-        const profiles = new Map([
-          [user.uid, { name: user.displayName || user.email || "Someone", color: USER_COLORS[0] }],
-        ]);
-        setUidNameMap(new Map([[user.uid, user.displayName || user.email || "Someone"]]));
-        setUserProfiles(profiles);
-      }
-    );
-    return () => unsub();
-  }, [user]);
+    if (user) fetchUserProfiles();
+    else {
+      setUidNameMap(new Map());
+      setUserProfiles(null);
+    }
+  }, [user, fetchUserProfiles]);
 
   // ---- auth ----
   useEffect(() => {
@@ -374,12 +377,14 @@ export function useBloom() {
           await fbUpdateProfile(auth.currentUser, { displayName: data.name.trim() });
         }
         await fetchProfile();
+        // Re-fetch user profiles so uid→name map updates across leaderboard, feed, etc.
+        await fetchUserProfiles();
         toast.success("Profile updated 🌿");
       } catch (e) {
         toast.error("Profile update failed — " + (e as Error).message);
       }
     },
-    [fetchProfile]
+    [fetchProfile, fetchUserProfiles]
   );
 
   const fetchJobPosts = useCallback(async () => {
