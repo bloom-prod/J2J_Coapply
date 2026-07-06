@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   onAuthStateChanged,
   signOut as fbSignOut,
+  updateProfile as fbUpdateProfile,
   type User,
 } from "firebase/auth";
 import {
@@ -74,6 +75,7 @@ function mapFeed(d: QueryDocumentSnapshot<DocumentData>): FeedEvent {
     company: x.company || "",
     role: x.role || "",
     status: x.status || "",
+    ownerUid: x.ownerUid || "",
     ownerName: x.ownerName || "Someone",
     ts: ts && typeof ts.toDate === "function" ? ts.toDate() : null,
   };
@@ -92,23 +94,44 @@ export function useBloom() {
   const [authReady, setAuthReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [serverJobs, setServerJobs] = useState<Job[]>([]);
-  const [feed, setFeed] = useState<FeedEvent[]>([]);
+  const [rawFeed, setRawFeed] = useState<FeedEvent[]>([]);
   const [jobPosts, setJobPosts] = useState<JobPost[]>([]);
   const [interviewPrepPosts, setInterviewPrepPosts] = useState<InterviewPrepPost[]>([]);
   const [interviewPrepComments, setInterviewPrepComments] = useState<Record<string, InterviewPrepComment[]>>({});
   const [pending, setPending] = useState<Pending>(EMPTY_PENDING);
   const [userProfiles, setUserProfiles] = useState<Map<string, { name: string; color: string }> | null>(null);
+  // uid → latest display name from userProfiles collection
+  const [uidNameMap, setUidNameMap] = useState<Map<string, string>>(new Map());
   const firstSnap = useRef(true);
 
-  // ---- user profiles (colors + verification) — only subscribe once authenticated ----
-  // Disabled Firestore access - using static user colors instead
+  // ---- user profiles — subscribe to get uid→name map for live name resolution ----
   useEffect(() => {
     if (!user) return;
-    // Create a basic user profile map with static colors
-    const basicProfile = new Map([
-      [user.displayName || user.email || "Someone", { name: user.displayName || user.email || "Someone", color: USER_COLORS[0] }],
-    ]);
-    setUserProfiles(basicProfile);
+    const unsub = onSnapshot(
+      collection(db, "userProfiles"),
+      (snap) => {
+        const names = new Map<string, string>();
+        const profiles = new Map<string, { name: string; color: string }>();
+        snap.docs.forEach((d, i) => {
+          const data = d.data();
+          const name = (data.name as string) || "Someone";
+          const color = NAME_COLOR_OVERRIDES[name] || (data.color as string) || USER_COLORS[i % USER_COLORS.length];
+          names.set(d.id, name);
+          profiles.set(d.id, { name, color });
+        });
+        setUidNameMap(names);
+        setUserProfiles(profiles);
+      },
+      () => {
+        // Fallback: use current user info if subscription fails
+        const profiles = new Map([
+          [user.uid, { name: user.displayName || user.email || "Someone", color: USER_COLORS[0] }],
+        ]);
+        setUidNameMap(new Map([[user.uid, user.displayName || user.email || "Someone"]]));
+        setUserProfiles(profiles);
+      }
+    );
+    return () => unsub();
   }, [user]);
 
   // ---- auth ----
@@ -122,7 +145,7 @@ export function useBloom() {
       }
       if (!u) {
         setServerJobs([]);
-        setFeed([]);
+        setRawFeed([]);
         setJobPosts([]);
         setInterviewPrepPosts([]);
         setInterviewPrepComments({});
@@ -154,7 +177,7 @@ export function useBloom() {
 
     const unsubFeed = onSnapshot(
       query(collection(db, "feed"), orderBy("ts", "desc"), limit(10)),
-      (snap) => setFeed(snap.docs.map(mapFeed)),
+      (snap) => setRawFeed(snap.docs.map(mapFeed)),
       (err) => console.error("feed snapshot error", err)
     );
 
@@ -164,20 +187,32 @@ export function useBloom() {
     };
   }, [user]);
 
-  // ---- derived: merge server data with optimistic overlay ----
+  // ---- derived: merge server data with optimistic overlay + resolve names ----
   const allJobs = useMemo<Job[]>(() => {
     const patched = serverJobs
       .filter((j) => !pending.deletes[j.id])
       .map((j) => (pending.patches[j.id] ? { ...j, ...pending.patches[j.id] } : j));
     const adds = pending.adds.filter((a) => !serverJobs.some((s) => s.id === a.id));
-    const list = [...adds, ...patched];
+    const list = [...adds, ...patched].map((j) => {
+      const resolved = j.ownerUid ? uidNameMap.get(j.ownerUid) : undefined;
+      return resolved ? { ...j, ownerName: resolved } : j;
+    });
     list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
     return list;
-  }, [serverJobs, pending]);
+  }, [serverJobs, pending, uidNameMap]);
 
   const myJobs = useMemo<Job[]>(
     () => allJobs.filter((j) => j.ownerUid === user?.uid),
     [allJobs, user]
+  );
+
+  // Resolve feed names from uid→name map
+  const feed = useMemo<FeedEvent[]>(
+    () => rawFeed.map((e) => {
+      const resolved = e.ownerUid ? uidNameMap.get(e.ownerUid) : undefined;
+      return resolved ? { ...e, ownerName: resolved } : e;
+    }),
+    [rawFeed, uidNameMap]
   );
 
   // ---- writes (through the TS API, with optimistic overlay) ----
@@ -334,6 +369,10 @@ export function useBloom() {
         });
         const d = await res.json();
         if (!res.ok || !d.ok) throw new Error(d.error || `Update failed (${res.status})`);
+        // Update client-side Firebase Auth displayName so nav bar reflects change immediately
+        if (data.name && auth.currentUser) {
+          await fbUpdateProfile(auth.currentUser, { displayName: data.name.trim() });
+        }
         await fetchProfile();
         toast.success("Profile updated 🌿");
       } catch (e) {
@@ -516,9 +555,45 @@ export function useBloom() {
     [userProfiles]
   );
 
+  // Resolve names for jobPosts, interviewPrepPosts, interviewPrepComments, resumes
+  const resolvedJobPosts = useMemo(
+    () => jobPosts.map((p) => {
+      const resolved = p.ownerUid ? uidNameMap.get(p.ownerUid) : undefined;
+      return resolved ? { ...p, ownerName: resolved } : p;
+    }),
+    [jobPosts, uidNameMap]
+  );
+
+  const resolvedInterviewPrepPosts = useMemo(
+    () => interviewPrepPosts.map((p) => {
+      const resolved = p.ownerUid ? uidNameMap.get(p.ownerUid) : undefined;
+      return resolved ? { ...p, ownerName: resolved } : p;
+    }),
+    [interviewPrepPosts, uidNameMap]
+  );
+
+  const resolvedInterviewPrepComments = useMemo(() => {
+    const result: Record<string, InterviewPrepComment[]> = {};
+    for (const [postId, comments] of Object.entries(interviewPrepComments)) {
+      result[postId] = comments.map((c) => {
+        const resolved = c.userId ? uidNameMap.get(c.userId) : undefined;
+        return resolved ? { ...c, userName: resolved } : c;
+      });
+    }
+    return result;
+  }, [interviewPrepComments, uidNameMap]);
+
+  const resolvedResumes = useMemo(
+    () => resumes.map((r) => {
+      const resolved = r.userId ? uidNameMap.get(r.userId) : undefined;
+      return resolved ? { ...r, userName: resolved } : r;
+    }),
+    [resumes, uidNameMap]
+  );
+
   const sharedJobKeys = useMemo(
-    () => new Set(jobPosts.map((p) => `${p.company}|${p.role}|${p.url}`)),
-    [jobPosts]
+    () => new Set(resolvedJobPosts.map((p) => `${p.company}|${p.role}|${p.url}`)),
+    [resolvedJobPosts]
   );
 
   return {
@@ -528,9 +603,9 @@ export function useBloom() {
     allJobs,
     myJobs,
     feed,
-    jobPosts,
-    interviewPrepPosts,
-    interviewPrepComments,
+    jobPosts: resolvedJobPosts,
+    interviewPrepPosts: resolvedInterviewPrepPosts,
+    interviewPrepComments: resolvedInterviewPrepComments,
     userColors,
     createJob,
     updateJob,
@@ -544,7 +619,7 @@ export function useBloom() {
     deleteInterviewPrepPost,
     fetchInterviewPrepComments,
     addInterviewPrepComment,
-    resumes,
+    resumes: resolvedResumes,
     fetchResumes,
     uploadResume,
     deleteResume,

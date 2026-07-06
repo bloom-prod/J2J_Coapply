@@ -103,6 +103,7 @@ export interface FeedEvent {
   company: string;
   role: string;
   status: string;
+  ownerUid: string;
   ownerName: string;
   ts: Date | null;
 }

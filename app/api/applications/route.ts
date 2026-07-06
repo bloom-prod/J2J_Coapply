@@ -39,6 +39,7 @@ async function addFeedEvent(ev: {
   company: string;
   role: string;
   status: string;
+  ownerUid: string;
   ownerName: string;
 }) {
   await adminDb.collection(FEED).add({ ...ev, ts: FieldValue.serverTimestamp() });
@@ -73,6 +74,7 @@ export async function POST(req: Request) {
       company: data.company as string,
       role: data.role as string,
       status,
+      ownerUid: user.uid,
       ownerName: user.name,
     });
 
@@ -108,6 +110,7 @@ export async function PUT(req: Request) {
         company: (data.company as string) || (existing.company as string) || "",
         role: (data.role as string) || (existing.role as string) || "",
         status: newStatus,
+        ownerUid: user.uid,
         ownerName: user.name,
       });
     }

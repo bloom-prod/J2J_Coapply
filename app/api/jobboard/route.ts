@@ -66,6 +66,7 @@ export async function POST(req: Request) {
       company,
       role,
       status: "",
+      ownerUid: user.uid,
       ownerName: user.name,
       ts: FieldValue.serverTimestamp(),
     });
