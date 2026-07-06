@@ -516,6 +516,11 @@ export function useBloom() {
     [userProfiles]
   );
 
+  const sharedJobKeys = useMemo(
+    () => new Set(jobPosts.map((p) => `${p.company}|${p.role}|${p.url}`)),
+    [jobPosts]
+  );
+
   return {
     user,
     authReady,
@@ -543,6 +548,7 @@ export function useBloom() {
     fetchResumes,
     uploadResume,
     deleteResume,
+    sharedJobKeys,
     signOut,
     profile: fetchedProfile,
     updateProfile,

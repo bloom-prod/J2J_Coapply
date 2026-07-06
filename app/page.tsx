@@ -132,7 +132,7 @@ export default function Page() {
           ) : (
             <>
               <TabsContent value="tracker">
-                <TrackerTab jobs={bloom.myJobs} onAdd={openAdd} onEdit={openEdit} onToggleStar={bloom.toggleStar} onShareToBoard={bloom.shareJob} />
+                <TrackerTab jobs={bloom.myJobs} onAdd={openAdd} onEdit={openEdit} onToggleStar={bloom.toggleStar} onShareToBoard={bloom.shareJob} sharedJobKeys={bloom.sharedJobKeys} />
               </TabsContent>
               <TabsContent value="insights">
                 <InsightsTab jobs={bloom.myJobs} onEdit={openEdit} />

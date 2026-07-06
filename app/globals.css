@@ -146,6 +146,10 @@ table.bloom tr:hover td{background:var(--pink-50);}
 .star-btn{background:none;border:none;cursor:pointer;font-size:16px;color:#D4D0C8;transition:color .2s;padding:2px 4px;}
 .star-btn.on{color:var(--pink-200);}
 .star-btn:hover{color:var(--pink-400);}
+.mass-select-checkbox{width:16px;height:16px;cursor:pointer;accent-color:var(--pink-400);}
+.mass-share-btn{border-color:var(--pink-200);color:var(--pink-600);font-weight:500;}
+.mass-share-btn:hover{background:var(--pink-50);border-color:var(--pink-400);}
+.abtn.already-shared{cursor:default;color:var(--success);}.abtn.already-shared:hover{background:none;color:var(--success);}
 
 .empty{text-align:center;padding:52px 24px;color:var(--text-light);}
 .empty-icon{font-size:34px;margin-bottom:12px;}
