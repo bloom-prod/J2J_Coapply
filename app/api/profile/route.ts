@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
-import { adminDb } from "@/lib/firebase-admin";
+import { adminDb, adminAuth } from "@/lib/firebase-admin";
 import { requireUser, HttpError } from "@/lib/auth-server";
 
 export const runtime = "nodejs";
@@ -68,6 +68,12 @@ export async function PUT(req: Request) {
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
 
     const updates: Record<string, unknown> = {};
+    if (body.name !== undefined) {
+      const name = String(body.name || "").trim();
+      if (!name) throw new HttpError(400, "Name cannot be empty");
+      updates.name = name;
+      await adminAuth.updateUser(user.uid, { displayName: name });
+    }
     if (body.githubUrl !== undefined) updates.githubUrl = String(body.githubUrl || "").trim();
     if (body.linkedinUrl !== undefined) updates.linkedinUrl = String(body.linkedinUrl || "").trim();
     if (body.websiteUrl !== undefined) updates.websiteUrl = String(body.websiteUrl || "").trim();

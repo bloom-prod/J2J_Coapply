@@ -28,7 +28,10 @@ export function ProfileTab({
   updateProfile: (data: Record<string, string>) => Promise<void>;
   jobs: Job[];
 }) {
+  const currentUser = auth.currentUser;
+
   const [editing, setEditing] = useState(false);
+  const [displayName, setDisplayName] = useState(profile?.name || currentUser?.displayName || "");
   const [githubUrl, setGithubUrl] = useState(profile?.githubUrl || "");
   const [linkedinUrl, setLinkedinUrl] = useState(profile?.linkedinUrl || "");
   const [websiteUrl, setWebsiteUrl] = useState(profile?.websiteUrl || "");
@@ -36,12 +39,11 @@ export function ProfileTab({
   const [busy, setBusy] = useState(false);
   const [resetSent, setResetSent] = useState(false);
 
-  const currentUser = auth.currentUser;
-
   async function handleSave() {
     setBusy(true);
     try {
       await updateProfile({
+        name: displayName.trim(),
         githubUrl: githubUrl.trim(),
         linkedinUrl: linkedinUrl.trim(),
         websiteUrl: websiteUrl.trim(),
@@ -95,8 +97,12 @@ export function ProfileTab({
 
       {editing ? (
         <div className="feed-card">
-          <div className="it" style={{ marginBottom: 14 }}>Edit Social Links</div>
+          <div className="it" style={{ marginBottom: 14 }}>Edit Profile</div>
           <div className="flex flex-col gap-4">
+            <div className="fg">
+              <Label htmlFor="pf-name">Display Name</Label>
+              <Input id="pf-name" placeholder="Your name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+            </div>
             <div className="fg">
               <Label htmlFor="pf-github">GitHub URL</Label>
               <Input id="pf-github" placeholder="https://github.com/username" value={githubUrl} onChange={(e) => setGithubUrl(e.target.value)} />
