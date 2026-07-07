@@ -104,38 +104,20 @@ export function useBloom() {
   const [uidNameMap, setUidNameMap] = useState<Map<string, string>>(new Map());
   const firstSnap = useRef(true);
 
-  // ---- user profiles — fetch uid→name map for live name resolution ----
-  const fetchUserProfiles = useCallback(async () => {
-    try {
-      const snap = await getDocs(collection(db, "userProfiles"));
-      const names = new Map<string, string>();
-      const profiles = new Map<string, { name: string; color: string }>();
-      snap.docs.forEach((d, i) => {
-        const data = d.data();
-        const name = (data.name as string) || "Someone";
-        const color = NAME_COLOR_OVERRIDES[name] || (data.color as string) || USER_COLORS[i % USER_COLORS.length];
-        names.set(d.id, name);
-        profiles.set(d.id, { name, color });
-      });
-      setUidNameMap(names);
-      setUserProfiles(profiles);
-    } catch {
-      // Fallback: use current user info if fetch fails
-      const u = auth.currentUser;
-      if (!u) return;
-      const name = u.displayName || u.email || "Someone";
-      setUidNameMap(new Map([[u.uid, name]]));
-      setUserProfiles(new Map([[u.uid, { name, color: USER_COLORS[0] }]]));
-    }
+  // ---- user profiles — live listener for uid→name resolution ----
+  const applyProfileSnapshot = useCallback((snap: { docs: QueryDocumentSnapshot<DocumentData>[] }) => {
+    const names = new Map<string, string>();
+    const profiles = new Map<string, { name: string; color: string }>();
+    snap.docs.forEach((d, i) => {
+      const data = d.data();
+      const name = (data.name as string) || "Someone";
+      const color = NAME_COLOR_OVERRIDES[name] || (data.color as string) || USER_COLORS[i % USER_COLORS.length];
+      names.set(d.id, name);
+      profiles.set(d.id, { name, color });
+    });
+    setUidNameMap(names);
+    setUserProfiles(profiles);
   }, []);
-
-  useEffect(() => {
-    if (user) fetchUserProfiles();
-    else {
-      setUidNameMap(new Map());
-      setUserProfiles(null);
-    }
-  }, [user, fetchUserProfiles]);
 
   // ---- auth ----
   useEffect(() => {
@@ -153,6 +135,7 @@ export function useBloom() {
         setInterviewPrepPosts([]);
         setInterviewPrepComments({});
         setPending(EMPTY_PENDING);
+        setUidNameMap(new Map());
         setUserProfiles(null);
         setLoading(true);
         firstSnap.current = true;
@@ -184,9 +167,24 @@ export function useBloom() {
       (err) => console.error("feed snapshot error", err)
     );
 
+    const unsubProfiles = onSnapshot(
+      collection(db, "userProfiles"),
+      (snap) => applyProfileSnapshot(snap),
+      (err) => {
+        console.error("userProfiles snapshot error", err);
+        // Fallback: use current user info
+        const u = auth.currentUser;
+        if (!u) return;
+        const name = u.displayName || u.email || "Someone";
+        setUidNameMap(new Map([[u.uid, name]]));
+        setUserProfiles(new Map([[u.uid, { name, color: USER_COLORS[0] }]]));
+      }
+    );
+
     return () => {
       unsubApps();
       unsubFeed();
+      unsubProfiles();
     };
   }, [user]);
 
@@ -375,16 +373,30 @@ export function useBloom() {
         // Update client-side Firebase Auth displayName so nav bar reflects change immediately
         if (data.name && auth.currentUser) {
           await fbUpdateProfile(auth.currentUser, { displayName: data.name.trim() });
+          // Optimistically update uid→name map so all views reflect the new name immediately
+          const uid = auth.currentUser.uid;
+          const newName = data.name.trim();
+          setUidNameMap((prev) => {
+            const next = new Map(prev);
+            next.set(uid, newName);
+            return next;
+          });
+          setUserProfiles((prev) => {
+            if (!prev) return prev;
+            const next = new Map(prev);
+            const existing = next.get(uid);
+            next.set(uid, { name: newName, color: existing?.color || USER_COLORS[0] });
+            return next;
+          });
         }
         await fetchProfile();
-        // Re-fetch user profiles so uid→name map updates across leaderboard, feed, etc.
-        await fetchUserProfiles();
+        // The onSnapshot listener on userProfiles will automatically pick up the server-side change
         toast.success("Profile updated 🌿");
       } catch (e) {
         toast.error("Profile update failed — " + (e as Error).message);
       }
     },
-    [fetchProfile, fetchUserProfiles]
+    [fetchProfile]
   );
 
   const fetchJobPosts = useCallback(async () => {
