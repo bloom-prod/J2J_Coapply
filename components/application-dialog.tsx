@@ -42,12 +42,14 @@ export function ApplicationDialog({
   open,
   onOpenChange,
   job,
+  prefill,
   onSave,
   onDelete,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   job: Job | null;
+  prefill?: Record<string, string> | null;
   onSave: (id: string | null, data: Form) => void;
   onDelete: (id: string) => void;
 }) {
@@ -70,10 +72,17 @@ export function ApplicationDialog({
         followup: job.followup,
         notes: job.notes,
       });
+    } else if (prefill) {
+      setForm({
+        ...EMPTY,
+        date: todayISO(),
+        ...prefill,
+        roleCategory: prefill.roleCategory || classifyRole(prefill.role || ""),
+      });
     } else {
       setForm({ ...EMPTY, date: todayISO() });
     }
-  }, [open, job]);
+  }, [open, job, prefill]);
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -211,6 +220,14 @@ export function ApplicationDialog({
               }}
             >
               <i className="ti ti-trash" /> Delete
+            </Button>
+          )}
+          {form.url && (
+            <Button
+              variant="outline"
+              onClick={() => window.open(form.url, "_blank", "noopener,noreferrer")}
+            >
+              <i className="ti ti-external-link" /> Open link
             </Button>
           )}
           <Button variant="outline" className="ml-auto" onClick={() => onOpenChange(false)}>

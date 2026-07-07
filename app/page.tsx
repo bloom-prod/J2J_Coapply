@@ -6,6 +6,7 @@ import { AuthScreen } from "@/components/auth-screen";
 import { TrackerTab } from "@/components/tracker-tab";
 import { InsightsTab } from "@/components/insights-tab";
 import { CommunityTab } from "@/components/community-tab";
+import { DiscoverTab } from "@/components/discover-tab";
 import { LeetCodeTab } from "@/components/leetcode-tab";
 import { JobsTab } from "@/components/jobs-tab";
 import { InterviewPrepTab } from "@/components/interview-prep-tab";
@@ -39,6 +40,7 @@ export default function Page() {
   const [tab, setTab] = useState("tracker");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Job | null>(null);
+  const [prefill, setPrefill] = useState<Record<string, string> | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
@@ -60,10 +62,17 @@ export default function Page() {
 
   function openAdd() {
     setEditing(null);
+    setPrefill(null);
     setDialogOpen(true);
   }
   function openEdit(job: Job) {
     setEditing(job);
+    setPrefill(null);
+    setDialogOpen(true);
+  }
+  function openPrefilled(data: Record<string, string>) {
+    setEditing(null);
+    setPrefill(data);
     setDialogOpen(true);
   }
   function save(id: string | null, data: Record<string, string>) {
@@ -88,6 +97,7 @@ export default function Page() {
     ["interview-prep", "🎤 Interview Prep"],
     ["resume", "📄 Resumes"],
     ["community", "🌍 Community"],
+    ["discover", "🔍 Discover"],
   ] as const;
 
   return (
@@ -141,7 +151,7 @@ export default function Page() {
                 <LeetCodeTab userColors={bloom.userColors} />
               </TabsContent>
               <TabsContent value="jobs">
-                <JobsTab posts={bloom.jobPosts} myJobs={bloom.myJobs} onShare={bloom.shareJob} onDelete={bloom.deleteJobPost} onRefresh={bloom.fetchJobPosts} onSaveToTracker={bloom.createJob} />
+                <JobsTab posts={bloom.jobPosts} myJobs={bloom.myJobs} onShare={bloom.shareJob} onDelete={bloom.deleteJobPost} onRefresh={bloom.fetchJobPosts} onSaveToTracker={openPrefilled} />
               </TabsContent>
               <TabsContent value="interview-prep">
                 <InterviewPrepTab
@@ -166,6 +176,9 @@ export default function Page() {
               <TabsContent value="community">
                 <CommunityTab allJobs={bloom.allJobs} feed={bloom.feed} userColors={bloom.userColors} />
               </TabsContent>
+              <TabsContent value="discover">
+                <DiscoverTab allJobs={bloom.allJobs} myJobs={bloom.myJobs} onSaveToTracker={openPrefilled} />
+              </TabsContent>
             </>
           )}
         </div>
@@ -175,6 +188,7 @@ export default function Page() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         job={editing}
+        prefill={prefill}
         onSave={save}
         onDelete={bloom.deleteJob}
       />

@@ -65,7 +65,7 @@ export function TrackerTab({
     return out;
   }, [jobs, q, filter, sf, sd]);
 
-  const allVisibleSelected = list.length > 0 && list.every((j) => selectedIds.has(j.id));
+  const allVisibleSelected = list.length > 0 && list.filter((j) => !sharedJobKeys.has(jobKey(j))).every((j) => selectedIds.has(j.id));
 
   const toggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -76,13 +76,18 @@ export function TrackerTab({
     });
   }, []);
 
+  const shareableList = useMemo(
+    () => list.filter((j) => !sharedJobKeys.has(jobKey(j))),
+    [list, sharedJobKeys]
+  );
+
   const toggleSelectAll = useCallback(() => {
     if (allVisibleSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(list.map((j) => j.id)));
+      setSelectedIds(new Set(shareableList.map((j) => j.id)));
     }
-  }, [allVisibleSelected, list]);
+  }, [allVisibleSelected, shareableList]);
 
   async function handleShareToBoard(j: Job) {
     if (!j.url) {
@@ -238,6 +243,9 @@ export function TrackerTab({
                         className="mass-select-checkbox"
                         checked={selectedIds.has(j.id)}
                         onChange={() => toggleSelect(j.id)}
+                        disabled={alreadyShared}
+                        title={alreadyShared ? "Already shared" : "Select to share"}
+                        style={alreadyShared ? { opacity: 0.3, cursor: "not-allowed" } : undefined}
                       />
                     </td>
                     <td>

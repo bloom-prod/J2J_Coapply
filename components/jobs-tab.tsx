@@ -15,17 +15,39 @@ interface Props {
   onShare: (data: { company: string; role: string; url: string; location: string; notes: string }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onRefresh: () => Promise<void>;
-  onSaveToTracker: (data: Record<string, string>) => Promise<void>;
+  onSaveToTracker: (data: Record<string, string>) => void;
 }
 
 const EMPTY = { company: "", role: "", url: "", location: "", notes: "" };
 
+function normalizeCompany(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[.,\-]+$/g, "")
+    .replace(/\s+(inc|llc|ltd|co|corp|corporation|group|capital|labs|technologies|tech|solutions|software|services|holdings|consulting)\.?$/gi, "")
+    .trim();
+}
+
+function isSameCompany(a: string, b: string): boolean {
+  if (a === b) return true;
+  const na = normalizeCompany(a);
+  const nb = normalizeCompany(b);
+  if (na === nb) return true;
+  if (na.includes(nb) || nb.includes(na)) return true;
+  return false;
+}
+
 function isAlreadySaved(post: JobPost, myJobs: Job[]) {
   return myJobs.some(
     (j) =>
-      j.company.trim().toLowerCase() === post.company.trim().toLowerCase() &&
+      isSameCompany(j.company, post.company) &&
       j.role.trim().toLowerCase() === post.role.trim().toLowerCase()
   );
+}
+
+function isAlreadyAppliedCompany(post: JobPost, myJobs: Job[]) {
+  return myJobs.some((j) => isSameCompany(j.company, post.company));
 }
 
 export function JobsTab({ posts, myJobs, onShare, onDelete, onRefresh, onSaveToTracker }: Props) {
@@ -38,12 +60,8 @@ export function JobsTab({ posts, myJobs, onShare, onDelete, onRefresh, onSaveToT
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
   const [savingPostId, setSavingPostId] = useState<string | null>(null);
 
-  const appliedCompanies = new Set(
-    myJobs.map((j) => j.company.trim().toLowerCase())
-  );
-
   const visiblePosts = hideApplied
-    ? posts.filter((p) => !appliedCompanies.has(p.company.trim().toLowerCase()))
+    ? posts.filter((p) => !isAlreadyAppliedCompany(p, myJobs))
     : posts;
 
   async function handleRefresh() {
@@ -82,27 +100,20 @@ export function JobsTab({ posts, myJobs, onShare, onDelete, onRefresh, onSaveToT
     }
   }
 
-  async function handleSaveToTracker(post: JobPost) {
+  function handleSaveToTracker(post: JobPost) {
     if (isAlreadySaved(post, myJobs)) {
       toast.error("This job is already in your tracker");
       return;
     }
-    setSavingPostId(post.id);
-    try {
-      await onSaveToTracker({
-        company: post.company,
-        role: post.role,
-        url: post.url,
-        location: post.location || "",
-        notes: post.notes || "",
-        status: "Applied",
-        date: new Date().toISOString().split("T")[0],
-      });
-    } catch (e) {
-      toast.error("Save failed — " + (e as Error).message);
-    } finally {
-      setSavingPostId(null);
-    }
+    onSaveToTracker({
+      company: post.company,
+      role: post.role,
+      url: post.url,
+      location: post.location || "",
+      notes: post.notes || "",
+      status: "Applied",
+      date: new Date().toISOString().split("T")[0],
+    });
   }
 
   const uniquePosters = new Set(visiblePosts.map((p) => p.ownerUid)).size;
