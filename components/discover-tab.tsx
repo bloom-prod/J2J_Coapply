@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { Job } from "@/lib/types";
 import { useDarkMode } from "@/hooks/use-dark-mode";
 import { Input } from "@/components/ui/input";
@@ -21,11 +21,14 @@ interface DiscoverCompany {
   count: number;
 }
 
-/** Normalize a company name for fuzzy matching: lowercase, strip suffixes like "inc", "capital", "labs", etc. */
+/** Collapse all whitespace (including non-breaking spaces) to a single regular space, lowercase, trim. */
+function cleanCompany(name: string): string {
+  return name.replace(/[\s\u00A0\u200B]+/g, " ").toLowerCase().trim();
+}
+
+/** Normalize a company name for fuzzy matching: strip suffixes like "inc", "capital", "labs", etc. */
 function normalizeCompany(name: string): string {
-  return name
-    .toLowerCase()
-    .trim()
+  return cleanCompany(name)
     .replace(/[.,\-]+$/g, "")
     .replace(/\s+(inc|llc|ltd|co|corp|corporation|group|capital|labs|technologies|tech|solutions|software|services|holdings|consulting)\.?$/gi, "")
     .trim();
@@ -33,12 +36,19 @@ function normalizeCompany(name: string): string {
 
 /** Check if two company names are "close enough" to be the same company */
 function isSameCompany(a: string, b: string): boolean {
-  if (a === b) return true;
+  const ca = cleanCompany(a);
+  const cb = cleanCompany(b);
+  if (ca === cb) return true;
+  // one contains the other (e.g. "burford" vs "burford capital")
+  if (ca.length >= 3 && cb.length >= 3) {
+    if (ca.includes(cb) || cb.includes(ca)) return true;
+  }
   const na = normalizeCompany(a);
   const nb = normalizeCompany(b);
   if (na === nb) return true;
-  // one contains the other (e.g. "uber" vs "uber technologies")
-  if (na.includes(nb) || nb.includes(na)) return true;
+  if (na.length >= 3 && nb.length >= 3) {
+    if (na.includes(nb) || nb.includes(na)) return true;
+  }
   return false;
 }
 
@@ -56,38 +66,69 @@ export function DiscoverTab({
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"popular" | "alpha">("popular");
 
+  const DISMISSED_KEY = "discover-dismissed";
+  const [dismissed, setDismissed] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem(DISMISSED_KEY);
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const dismissCompany = useCallback((company: string) => {
+    const key = cleanCompany(company);
+    setDismissed((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      localStorage.setItem(DISMISSED_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  }, []);
+
   const myCompanyNames = useMemo(
-    () => myJobs.map((j) => j.company.toLowerCase().trim()).filter(Boolean),
+    () => myJobs.map((j) => cleanCompany(j.company)).filter(Boolean),
     [myJobs]
   );
 
   const discoveries = useMemo(() => {
     const map = new Map<string, DiscoverCompany>();
 
+    // Group jobs by company first, then deduplicate:
+    // if any job for a company has a URL, discard the ones without a URL.
+    const companyJobs = new Map<string, Job[]>();
     for (const j of allJobs) {
       if (!j.company) continue;
-      const key = j.company.toLowerCase().trim();
-      // skip companies the current user has applied to (fuzzy match)
+      const key = cleanCompany(j.company);
       if (myCompanyNames.some((my) => isSameCompany(my, key))) continue;
+      if (dismissed.has(key)) continue;
+      if (!companyJobs.has(key)) companyJobs.set(key, []);
+      companyJobs.get(key)!.push(j);
+    }
 
-      if (!map.has(key)) {
-        map.set(key, {
-          company: j.company,
-          roles: [],
-          urls: [],
-          appliedBy: [],
-          statuses: [],
-          count: 0,
-        });
+    for (const [key, jobs] of companyJobs) {
+      const hasAnyUrl = jobs.some((j) => !!j.url);
+      const filtered = hasAnyUrl ? jobs.filter((j) => !!j.url) : jobs;
+
+      const entry: DiscoverCompany = {
+        company: filtered[0].company,
+        roles: [],
+        urls: [],
+        appliedBy: [],
+        statuses: [],
+        count: filtered.length,
+      };
+
+      for (const j of filtered) {
+        if (j.role && !entry.roles.includes(j.role)) entry.roles.push(j.role);
+        if (j.url && !entry.urls.includes(j.url)) entry.urls.push(j.url);
+        if (j.ownerName && !entry.appliedBy.includes(j.ownerName))
+          entry.appliedBy.push(j.ownerName);
+        if (j.status && !entry.statuses.includes(j.status))
+          entry.statuses.push(j.status);
       }
-      const entry = map.get(key)!;
-      entry.count++;
-      if (j.role && !entry.roles.includes(j.role)) entry.roles.push(j.role);
-      if (j.url && !entry.urls.includes(j.url)) entry.urls.push(j.url);
-      if (j.ownerName && !entry.appliedBy.includes(j.ownerName))
-        entry.appliedBy.push(j.ownerName);
-      if (j.status && !entry.statuses.includes(j.status))
-        entry.statuses.push(j.status);
+
+      map.set(key, entry);
     }
 
     let list = [...map.values()];
@@ -108,7 +149,7 @@ export function DiscoverTab({
     }
 
     return list;
-  }, [allJobs, myCompanyNames, search, sortBy]);
+  }, [allJobs, myCompanyNames, dismissed, search, sortBy]);
 
   const hasOfferOrInterview = (statuses: string[]) =>
     statuses.includes("Offer") || statuses.includes("Interview");
@@ -261,27 +302,43 @@ export function DiscoverTab({
                 </div>
               )}
 
-              <button
-                className="abtn"
-                style={{
-                  fontSize: 12,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                  color: "var(--sage-400)",
-                }}
-                onClick={() =>
-                  onSaveToTracker({
-                    company: d.company,
-                    role: d.roles[0] || "",
-                    url: d.urls[0] || "",
-                    status: "Want to Apply",
-                  })
-                }
-                title="Add to your tracker"
-              >
-                <i className="ti ti-plus" /> Add to tracker
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button
+                  className="abtn"
+                  style={{
+                    fontSize: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    color: "var(--sage-400)",
+                  }}
+                  onClick={() =>
+                    onSaveToTracker({
+                      company: d.company,
+                      role: d.roles[0] || "",
+                      url: d.urls[0] || "",
+                      status: "Want to Apply",
+                    })
+                  }
+                  title="Add to your tracker"
+                >
+                  <i className="ti ti-plus" /> Add to tracker
+                </button>
+                <button
+                  className="abtn"
+                  style={{
+                    fontSize: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    color: "var(--text-light)",
+                  }}
+                  onClick={() => dismissCompany(d.company)}
+                  title="Dismiss this company"
+                >
+                  <i className="ti ti-x" /> Dismiss
+                </button>
+              </div>
             </div>
           ))}
         </div>
