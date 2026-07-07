@@ -9,14 +9,10 @@ import {
 } from "firebase/auth";
 import {
   collection,
-  doc,
-  getDoc,
-  getDocs,
   limit,
   onSnapshot,
   orderBy,
   query,
-  setDoc,
   type DocumentData,
   type QueryDocumentSnapshot,
   type Timestamp,
@@ -28,7 +24,7 @@ import type { FeedEvent, Job, JobPost, Resume, UserProfile, InterviewPrepPost, I
 const USER_COLORS = ["#E07BA0","#7BB87B","#78AEDE","#DDB060","#A87BD4","#5FC5C5","#E8895A"];
 const NAME_COLOR_OVERRIDES: Record<string, string> = { "Shruti": "#FF69B4" }; // hot pink
 
-async function ensureUserProfile(uid: string, name: string, email: string | null) {
+async function ensureUserProfile(_uid: string, _name: string, _email: string | null) {
   // Disabled Firestore access - user profiles not stored in Firestore
   // Just using static color system instead
   return;
@@ -102,7 +98,13 @@ export function useBloom() {
   const [userProfiles, setUserProfiles] = useState<Map<string, { name: string; color: string }> | null>(null);
   // uid → latest display name from userProfiles collection
   const [uidNameMap, setUidNameMap] = useState<Map<string, string>>(new Map());
+
+  // Both flags must be true before we clear the loading spinner.
+  // This prevents the community tab from rendering before uidNameMap is populated,
+  // which would cause stale ownerNames (e.g. "Plant 1 (heh)") to appear as
+  // separate entries alongside the resolved new name ("Superior plant 1").
   const firstSnap = useRef(true);
+  const profilesReady = useRef(false);
 
   // ---- user profiles — live listener for uid→name resolution ----
   const applyProfileSnapshot = useCallback((snap: { docs: QueryDocumentSnapshot<DocumentData>[] }) => {
@@ -117,6 +119,9 @@ export function useBloom() {
     });
     setUidNameMap(names);
     setUserProfiles(profiles);
+    // Signal profiles ready; clear loading if apps snapshot already arrived
+    profilesReady.current = true;
+    if (!firstSnap.current) setLoading(false);
   }, []);
 
   // ---- auth ----
@@ -147,6 +152,7 @@ export function useBloom() {
   useEffect(() => {
     if (!user) return;
     firstSnap.current = true;
+    profilesReady.current = false;
     setLoading(true);
 
     const unsubApps = onSnapshot(
@@ -155,7 +161,9 @@ export function useBloom() {
         setServerJobs(snap.docs.map(mapDoc));
         if (firstSnap.current) {
           firstSnap.current = false;
-          setLoading(false);
+          // Only clear loading once the profiles snapshot has also arrived,
+          // so uidNameMap is populated before any name-resolved data renders.
+          if (profilesReady.current) setLoading(false);
         }
       },
       (err) => console.error("applications snapshot error", err)
@@ -178,6 +186,8 @@ export function useBloom() {
         const name = u.displayName || u.email || "Someone";
         setUidNameMap(new Map([[u.uid, name]]));
         setUserProfiles(new Map([[u.uid, { name, color: USER_COLORS[0] }]]));
+        profilesReady.current = true;
+        if (!firstSnap.current) setLoading(false);
       }
     );
 
@@ -186,7 +196,7 @@ export function useBloom() {
       unsubFeed();
       unsubProfiles();
     };
-  }, [user]);
+  }, [user, applyProfileSnapshot]);
 
   // ---- derived: merge server data with optimistic overlay + resolve names ----
   const allJobs = useMemo<Job[]>(() => {
