@@ -159,4 +159,10 @@ export interface CommunityStats {
   statusCounts: Record<string, number>;
   topCompanies: { name: string; count: number }[];
   monthlyVolume: { month: string; count: number }[];
+  uidToName: Record<string, string>;
+  userColors: Record<string, string>;
+  weeklyData: Record<string, string | number>[];
+  weeklyUsers: string[];
+  roleCatData: Record<string, string | number>[];
+  roleCatUsers: string[];
 }

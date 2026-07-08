@@ -18,17 +18,12 @@ import {
 } from "recharts";
 import { auth } from "@/lib/firebase";
 import { STATUSES, type CommunityStats, type FeedEvent, type Job } from "@/lib/types";
-import { timeAgo, classifyRole } from "@/lib/job-utils";
+import { timeAgo } from "@/lib/job-utils";
 import { useDarkMode } from "@/hooks/use-dark-mode";
 
 const STATUS_COLORS = ["#185FA5", "#6B9E6B", "#D4537E", "#3B6D11", "#A32D2D", "#9E9088", "#854F0B"];
 const FALLBACK_COLORS = ["#E07BA0","#7BB87B","#78AEDE","#DDB060","#A87BD4","#5FC5C5","#E8895A"];
 
-function weekMonday(dateStr: string): string {
-  const d = new Date(dateStr + "T00:00:00");
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  return d.toISOString().slice(0, 10);
-}
 function fmtWeekLabel(iso: string): string {
   const d = new Date(iso + "T00:00:00");
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -39,8 +34,8 @@ function chartAxisStyle(dark: boolean) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-interface TipProps { active?: boolean; payload?: any[]; label?: string; dark: boolean; nameMap?: Map<string, string> }
-function ChartTip({ active, payload, label, dark, nameMap }: TipProps) {
+interface TipProps { active?: boolean; payload?: any[]; label?: string; dark: boolean }
+function ChartTip({ active, payload, label, dark }: TipProps) {
   if (!active || !payload?.length) return null;
   return (
     <div style={{
@@ -52,12 +47,9 @@ function ChartTip({ active, payload, label, dark, nameMap }: TipProps) {
       whiteSpace: "nowrap",
     }}>
       {label && <div style={{ opacity: 0.7, marginBottom: 2 }}>{label}</div>}
-      {payload.map((p, i) => {
-        const displayName = nameMap?.get(p.name) || p.name;
-        return (
-          <div key={i}><strong>{p.value}</strong>{payload.length > 1 ? ` ${displayName}` : ""}</div>
-        );
-      })}
+      {payload.map((p, i) => (
+        <div key={i}><strong>{p.value}</strong>{payload.length > 1 ? ` ${p.name}` : ""}</div>
+      ))}
     </div>
   );
 }
@@ -109,11 +101,6 @@ function VBar({ data, fill, dark }: { data: { name: string; value: number }[]; f
 }
 
 export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; feed: FeedEvent[]; userColors: Map<string, string> }) {
-  const uc = (uid: string, i: number) => {
-    const job = allJobs.find(j => j.ownerUid === uid);
-    const name = job?.ownerName;
-    return name ? (userColors.get(name) ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]) : FALLBACK_COLORS[i % FALLBACK_COLORS.length];
-  };
   const [stats, setStats] = useState<CommunityStats | null>(null);
 
   useEffect(() => {
@@ -132,14 +119,32 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
     return () => {
       cancelled = true;
     };
-  }, [allJobs.length]);
+  }, []);
 
-  const uidToName = useMemo(() => {
-    const map = new Map<string, string>();
-    allJobs.forEach(j => {
-      if (j.ownerUid && j.ownerName) map.set(j.ownerUid, j.ownerName);
+  const uc = (name: string, i: number) => {
+    const sc = stats?.userColors;
+    return (sc && sc[name]) || userColors.get(name) || FALLBACK_COLORS[i % FALLBACK_COLORS.length];
+  };
+
+  // Aggregate cards computed from live snapshot for real-time updates
+  const cards = useMemo(() => {
+    const total = allJobs.length;
+    const users = new Set(allJobs.map((j) => j.ownerUid).filter(Boolean)).size;
+    let interviewish = 0, offers = 0, responded = 0;
+    allJobs.forEach((j) => {
+      if (j.status === "Interview" || j.status === "Offer") interviewish++;
+      if (j.status === "Offer") offers++;
+      if (j.status !== "Want to Apply" && j.status !== "Applied" && j.status !== "Ghosted") responded++;
     });
-    return map;
+    const r = (part: number, t: number) => (t ? Math.round((part / t) * 100) : 0);
+    return {
+      totalApps: total,
+      totalUsers: users,
+      avgPerUser: users ? Math.round((total / users) * 10) / 10 : 0,
+      interviewRate: r(interviewish, total),
+      offerRate: r(offers, total),
+      responseRate: r(responded, total),
+    };
   }, [allJobs]);
 
   const charts = useMemo(() => {
@@ -158,62 +163,21 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
       if (o !== undefined) for (let i = 0; i <= o; i++) funnelReached[i]++;
     });
 
-    const weeklyUids = [...new Set(allJobs.map((j) => j.ownerUid).filter(Boolean) as string[])];
-    const weeklyUserMeta = weeklyUids.map((uid) => ({ uid, name: uidToName.get(uid) || `User ${uid.slice(0, 6)}` }));
-
-    const todayW = new Date(); todayW.setHours(0, 0, 0, 0);
-    const thisMon = weekMonday(todayW.toISOString().slice(0, 10));
-    const weekKeys: string[] = [];
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date(thisMon + "T00:00:00"); d.setDate(d.getDate() - i * 7);
-      weekKeys.push(d.toISOString().slice(0, 10));
-    }
-    const weeklyByUid: Record<string, Record<string, number>> = {};
-    allJobs.forEach((j) => {
-      if (!j.date) return;
-      const w = weekMonday(j.date);
-      if (!weekKeys.includes(w)) return;
-      const uid = j.ownerUid;
-      if (!uid) return;
-      if (!weeklyByUid[w]) weeklyByUid[w] = {};
-      weeklyByUid[w][uid] = (weeklyByUid[w][uid] || 0) + 1;
-    });
-    const weeklyData = weekKeys.map((iso) => {
-      const obj: Record<string, string | number> = { week: fmtWeekLabel(iso) };
-      weeklyUserMeta.forEach(({ uid }) => { obj[uid] = weeklyByUid[iso]?.[uid] || 0; });
-      return obj;
-    });
-
-    const roleCatByUid: Record<string, Record<string, number>> = {};
-    allJobs.forEach((j) => {
-      const cat = j.roleCategory || classifyRole(j.role);
-      if (!cat) return;
-      const uid = j.ownerUid;
-      if (!uid) return;
-      if (!roleCatByUid[cat]) roleCatByUid[cat] = {};
-      roleCatByUid[cat][uid] = (roleCatByUid[cat][uid] || 0) + 1;
-    });
-    const roleCatUids = [...new Set(
-      allJobs.filter((j) => j.roleCategory || classifyRole(j.role)).map((j) => j.ownerUid).filter(Boolean) as string[]
-    )];
-    const roleCatUserMeta = roleCatUids.map((uid) => ({ uid, name: uidToName.get(uid) || `User ${uid.slice(0, 6)}` }));
-    const roleUidToName = new Map(roleCatUserMeta.map(u => [u.uid, u.name]));
-    const roleCatData = Object.entries(roleCatByUid)
-      .sort((a, b) => Object.values(b[1]).reduce((s, n) => s + n, 0) - Object.values(a[1]).reduce((s, n) => s + n, 0))
-      .slice(0, 8)
-      .map(([cat, byUid]) => {
-        const obj: Record<string, string | number> = { cat };
-        roleCatUserMeta.forEach(({ uid }) => { obj[uid] = byUid[uid] || 0; });
-        return obj;
-      });
-
     return {
       status: STATUSES.map((s) => ({ name: s, value: sc[s] })),
       funnel: ["Phone Screen", "Interview", "Offer"].map((s, i) => ({ name: s, value: funnelReached[i] })),
       companies: Object.entries(cc).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, value]) => ({ name, value })),
-      weeklyData, weeklyUserMeta, uidToName, roleCatData, roleCatUserMeta, roleUidToName,
     };
-  }, [allJobs, uidToName]);
+  }, [allJobs]);
+
+  // Format weekly ISO week keys to display labels
+  const weeklyData = useMemo(() => {
+    if (!stats?.weeklyData) return [];
+    return stats.weeklyData.map((d) => ({
+      ...d,
+      week: fmtWeekLabel(d.week as string),
+    }));
+  }, [stats?.weeklyData]);
 
   const leaderboard = useMemo(() => {
     const by: Record<string, { uid: string; name: string; total: number; interviews: number; offers: number; responded: number }> = {};
@@ -221,7 +185,8 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
       if (j.status === "Want to Apply") return;
       const uid = j.ownerUid;
       if (!uid) return;
-      const userName = uidToName.get(uid) || (uid === auth.currentUser?.uid ? (auth.currentUser.displayName || auth.currentUser.email || "You") : `User ${uid.slice(0, 6)}`);
+      const serverName = stats?.uidToName?.[uid];
+      const userName = serverName || (uid === auth.currentUser?.uid ? (auth.currentUser.displayName || auth.currentUser.email || "You") : `User ${uid.slice(0, 6)}`);
       if (!by[uid]) by[uid] = { uid, name: userName, total: 0, interviews: 0, offers: 0, responded: 0 };
       const u = by[uid];
       u.total++;
@@ -230,7 +195,7 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
       if (j.status !== "Applied" && j.status !== "Ghosted") u.responded++;
     });
     return Object.values(by).sort((a, b) => b.total - a.total);
-  }, [allJobs, uidToName]);
+  }, [allJobs, stats?.uidToName]);
 
   const dark = useDarkMode();
   const myUid = auth.currentUser?.uid;
@@ -243,6 +208,8 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
     </div>
   );
 
+  const roleCatUsers = stats?.roleCatUsers || [];
+
   return (
     <div>
       <div className="sec-header" style={{ marginBottom: 6 }}>
@@ -253,12 +220,12 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
       </div>
 
       <div className="stats-row">
-        {card("u", stats?.totalUsers ?? "—", "Gardeners", true)}
-        {card("a", stats?.totalApps ?? "—", "Applications")}
-        {card("v", stats?.avgPerUser ?? "—", "Avg / person", true)}
-        {card("i", stats ? stats.interviewRate + "%" : "—", "Interview rate", false, "var(--info)")}
-        {card("o", stats ? stats.offerRate + "%" : "—", "Offer rate", false, "var(--success)")}
-        {card("r", stats ? stats.responseRate + "%" : "—", "Response rate", true)}
+        {card("u", cards.totalUsers, "Gardeners", true)}
+        {card("a", cards.totalApps, "Applications")}
+        {card("v", cards.avgPerUser, "Avg / person", true)}
+        {card("i", cards.interviewRate + "%", "Interview rate", false, "var(--info)")}
+        {card("o", cards.offerRate + "%", "Offer rate", false, "var(--success)")}
+        {card("r", cards.responseRate + "%", "Response rate", true)}
       </div>
 
       <div className="comm-grid" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -275,14 +242,14 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
             <div className="it">Applications by role category</div>
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={charts.roleCatData} margin={{ left: 0, right: 8, top: 4, bottom: 40 }}>
+                <BarChart data={stats?.roleCatData || []} margin={{ left: 0, right: 8, top: 4, bottom: 40 }}>
                   <CartesianGrid vertical={false} stroke={dark ? "#2E2B3C" : "#F0F5F0"} />
                   <XAxis dataKey="cat" tick={{ fontSize: 10, fill: dark ? "#A89EC0" : "#9E9088" }} interval={0} angle={-30} textAnchor="end" tickFormatter={(v: string) => v.length > 12 ? v.slice(0, 11) + "…" : v} />
                   <YAxis allowDecimals={false} tick={chartAxisStyle(dark)} />
-                  <Tooltip content={(p) => <ChartTip {...p} dark={dark} nameMap={charts.roleUidToName} />} />
-                  <Legend verticalAlign="top" align="right" wrapperStyle={{ fontSize: 11, color: dark ? "#A89EC0" : "#6B5E52", paddingBottom: 4 }} formatter={(value) => charts.roleUidToName.get(value) || value} />
-                  {charts.roleCatUserMeta.map(({ uid }, i) => (
-                    <Bar key={uid} dataKey={uid} stackId="s" fill={uc(uid, i)} radius={i === charts.roleCatUserMeta.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
+                  <Tooltip cursor={{ fill: dark ? "rgba(224,123,160,.08)" : "rgba(212,83,126,.06)" }} content={(p) => <ChartTip {...p} dark={dark} />} />
+                  <Legend verticalAlign="top" align="right" wrapperStyle={{ fontSize: 11, color: dark ? "#A89EC0" : "#6B5E52", paddingBottom: 4 }} />
+                  {roleCatUsers.map((name, i) => (
+                    <Bar key={name} dataKey={name} stackId="s" fill={uc(name, i)} radius={i === roleCatUsers.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
                   ))}
                 </BarChart>
               </ResponsiveContainer>
@@ -293,14 +260,14 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
             <div className="it">Weekly application volume</div>
             <div className="chart-wrap">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={charts.weeklyData} margin={{ left: 0, right: 12, top: 6, bottom: 4 }}>
+                <LineChart data={weeklyData} margin={{ left: 0, right: 12, top: 6, bottom: 4 }}>
                   <CartesianGrid stroke={dark ? "#2E2B3C" : "#F0F5F0"} vertical={false} />
                   <XAxis dataKey="week" tick={chartAxisStyle(dark)} />
                   <YAxis allowDecimals={false} tick={chartAxisStyle(dark)} />
-                  <Tooltip content={(p) => <ChartTip {...p} dark={dark} nameMap={charts.uidToName} />} />
-                  <Legend wrapperStyle={{ fontSize: 12, color: dark ? "#A89EC0" : "#9E9088" }} formatter={(value) => charts.uidToName.get(value) || value} />
-                  {charts.weeklyUserMeta.map(({ uid }, i) => (
-                    <Line key={uid} dataKey={uid} type="monotone" stroke={uc(uid, i)} strokeWidth={2} dot={false} />
+                  <Tooltip cursor={{ stroke: dark ? "#4A4460" : "#ccc", strokeWidth: 1 }} content={(p) => <ChartTip {...p} dark={dark} />} />
+                  <Legend wrapperStyle={{ fontSize: 12, color: dark ? "#A89EC0" : "#9E9088" }} />
+                  {(stats?.weeklyUsers || []).map((name, i) => (
+                    <Line key={name} dataKey={name} type="monotone" stroke={uc(name, i)} strokeWidth={2} dot={false} />
                   ))}
                 </LineChart>
               </ResponsiveContainer>
@@ -326,7 +293,7 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
               </thead>
               <tbody>
                 {leaderboard.map((u, i) => {
-                  const rate = u.total ? Math.round((u.responded / u.total) * 100) : 0;
+                  const r = u.total ? Math.round((u.responded / u.total) * 100) : 0;
                   const me = u.uid === myUid;
                   return (
                     <tr key={u.uid} className={me ? "lb-row-me" : ""}>
@@ -335,7 +302,7 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
                       <td className="num">{u.total}</td>
                       <td className="num">{u.interviews}</td>
                       <td className="num lb-offers">{u.offers}</td>
-                      <td className="num">{rate}%</td>
+                      <td className="num">{r}%</td>
                     </tr>
                   );
                 })}
