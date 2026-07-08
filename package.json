@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "export-firestore": "npx ts-node scripts/export-firestore.ts",
+    "import-mongodb": "npx ts-node scripts/import-to-mongodb.ts",
+    "firestore-to-mongodb": "npm run export-firestore && npm run import-mongodb"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.2",
@@ -20,6 +23,7 @@
     "firebase": "^10.14.1",
     "firebase-admin": "^12.7.0",
     "lucide-react": "^0.451.0",
+    "mongodb": "^6.0.0",
     "next": "14.2.15",
     "next-themes": "^0.3.0",
     "react": "^18.3.1",
