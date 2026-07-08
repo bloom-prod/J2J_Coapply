@@ -108,11 +108,14 @@ function VBar({ data, fill, dark }: { data: { name: string; value: number }[]; f
   );
 }
 
-export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; feed: FeedEvent[]; userProfiles: Map<string, { name: string; color: string }> | null }) {
-  const uc = (uid: string, i: number) => userProfiles?.get(uid)?.color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length];
+export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; feed: FeedEvent[]; userColors: Map<string, string> }) {
+  const uc = (uid: string, i: number) => {
+    const job = allJobs.find(j => j.ownerUid === uid);
+    const name = job?.ownerName;
+    return name ? (userColors.get(name) ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]) : FALLBACK_COLORS[i % FALLBACK_COLORS.length];
+  };
   const [stats, setStats] = useState<CommunityStats | null>(null);
 
-  // Headline numbers from the server-side aggregator. Refresh as the pool changes.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -131,6 +134,14 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
     };
   }, [allJobs.length]);
 
+  const uidToName = useMemo(() => {
+    const map = new Map<string, string>();
+    allJobs.forEach(j => {
+      if (j.ownerUid && j.ownerName) map.set(j.ownerUid, j.ownerName);
+    });
+    return map;
+  }, [allJobs]);
+
   const charts = useMemo(() => {
     const sc: Record<string, number> = {};
     STATUSES.forEach((s) => (sc[s] = 0));
@@ -140,7 +151,6 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
       if (j.company) cc[j.company] = (cc[j.company] || 0) + 1;
     });
 
-    // Funnel: how many apps reached at least each stage (excluding "Applied")
     const stageOrder: Record<string, number> = { "Phone Screen": 0, Interview: 1, Offer: 2 };
     const funnelReached = [0, 0, 0];
     allJobs.forEach((j) => {
@@ -148,23 +158,9 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
       if (o !== undefined) for (let i = 0; i <= o; i++) funnelReached[i]++;
     });
 
-    const resolveName = (uid: string) => {
-      if (userProfiles?.has(uid)) {
-        return userProfiles.get(uid)!.name;
-      }
-      // Fallback: if this is the current user, use their auth info
-      if (uid === auth.currentUser?.uid) {
-        return auth.currentUser.displayName || auth.currentUser.email || "You";
-      }
-      return `User ${uid.slice(0, 6)}`;
-    };
-
     const weeklyUids = [...new Set(allJobs.map((j) => j.ownerUid).filter(Boolean) as string[])];
-    const weeklyUserMeta = weeklyUids.map((uid) => ({ uid, name: resolveName(uid) }));
-    // Create uid->name mapping for chart labels
-    const uidToName = new Map(weeklyUserMeta.map(u => [u.uid, u.name]));
+    const weeklyUserMeta = weeklyUids.map((uid) => ({ uid, name: uidToName.get(uid) || `User ${uid.slice(0, 6)}` }));
 
-    // Weekly volume per user — last 12 weeks
     const todayW = new Date(); todayW.setHours(0, 0, 0, 0);
     const thisMon = weekMonday(todayW.toISOString().slice(0, 10));
     const weekKeys: string[] = [];
@@ -188,7 +184,6 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
       return obj;
     });
 
-    // Role categories stacked by user
     const roleCatByUid: Record<string, Record<string, number>> = {};
     allJobs.forEach((j) => {
       const cat = j.roleCategory || classifyRole(j.role);
@@ -201,8 +196,7 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
     const roleCatUids = [...new Set(
       allJobs.filter((j) => j.roleCategory || classifyRole(j.role)).map((j) => j.ownerUid).filter(Boolean) as string[]
     )];
-    const roleCatUserMeta = roleCatUids.map((uid) => ({ uid, name: resolveName(uid) }));
-    // Create uid->name mapping for role chart
+    const roleCatUserMeta = roleCatUids.map((uid) => ({ uid, name: uidToName.get(uid) || `User ${uid.slice(0, 6)}` }));
     const roleUidToName = new Map(roleCatUserMeta.map(u => [u.uid, u.name]));
     const roleCatData = Object.entries(roleCatByUid)
       .sort((a, b) => Object.values(b[1]).reduce((s, n) => s + n, 0) - Object.values(a[1]).reduce((s, n) => s + n, 0))
@@ -219,15 +213,15 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
       companies: Object.entries(cc).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, value]) => ({ name, value })),
       weeklyData, weeklyUserMeta, uidToName, roleCatData, roleCatUserMeta, roleUidToName,
     };
-  }, [allJobs, userProfiles]);
+  }, [allJobs, uidToName]);
 
   const leaderboard = useMemo(() => {
     const by: Record<string, { uid: string; name: string; total: number; interviews: number; offers: number; responded: number }> = {};
     allJobs.forEach((j) => {
-      if (j.status === "Want to Apply") return; // saved jobs don't count
+      if (j.status === "Want to Apply") return;
       const uid = j.ownerUid;
       if (!uid) return;
-      const userName = userProfiles?.get(uid)?.name || (uid === auth.currentUser?.uid ? (auth.currentUser.displayName || auth.currentUser.email || "You") : `User ${uid.slice(0, 6)}`);
+      const userName = uidToName.get(uid) || (uid === auth.currentUser?.uid ? (auth.currentUser.displayName || auth.currentUser.email || "You") : `User ${uid.slice(0, 6)}`);
       if (!by[uid]) by[uid] = { uid, name: userName, total: 0, interviews: 0, offers: 0, responded: 0 };
       const u = by[uid];
       u.total++;
@@ -236,7 +230,7 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
       if (j.status !== "Applied" && j.status !== "Ghosted") u.responded++;
     });
     return Object.values(by).sort((a, b) => b.total - a.total);
-  }, [allJobs, userProfiles]);
+  }, [allJobs, uidToName]);
 
   const dark = useDarkMode();
   const myUid = auth.currentUser?.uid;
