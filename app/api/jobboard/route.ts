@@ -27,8 +27,7 @@ export async function GET(req: Request) {
         location: x.location || "",
         notes: x.notes || "",
         ownerUid: x.ownerUid || "",
-        ownerName: x.ownerName || "Someone",
-        postedAt: x.createdAt?.toDate?.()?.toISOString?.() ?? "",
+                postedAt: x.createdAt?.toDate?.()?.toISOString?.() ?? "",
       };
     });
     return NextResponse.json({ ok: true, posts });
@@ -57,7 +56,6 @@ export async function POST(req: Request) {
       location: String(body.location || "").trim(),
       notes: String(body.notes || "").trim(),
       ownerUid: user.uid,
-      ownerName: user.name,
       createdAt: now,
     });
 
@@ -67,7 +65,6 @@ export async function POST(req: Request) {
       role,
       status: "",
       ownerUid: user.uid,
-      ownerName: user.name,
       ts: FieldValue.serverTimestamp(),
     });
 

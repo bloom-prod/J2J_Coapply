@@ -40,7 +40,6 @@ async function addFeedEvent(ev: {
   role: string;
   status: string;
   ownerUid: string;
-  ownerName: string;
 }) {
   await adminDb.collection(FEED).add({ ...ev, ts: FieldValue.serverTimestamp() });
 }
@@ -64,8 +63,7 @@ export async function POST(req: Request) {
       status,
       starred: data.starred === true,
       ownerUid: user.uid,
-      ownerName: user.name,
-      createdAt: now,
+            createdAt: now,
       updatedAt: now,
     });
 
@@ -75,8 +73,7 @@ export async function POST(req: Request) {
       role: data.role as string,
       status,
       ownerUid: user.uid,
-      ownerName: user.name,
-    });
+          });
 
     return NextResponse.json({ ok: true, id: ref.id });
   } catch (err) {
@@ -111,8 +108,7 @@ export async function PUT(req: Request) {
         role: (data.role as string) || (existing.role as string) || "",
         status: newStatus,
         ownerUid: user.uid,
-        ownerName: user.name,
-      });
+              });
     }
 
     return NextResponse.json({ ok: true, id });

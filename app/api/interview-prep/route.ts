@@ -24,8 +24,7 @@ export async function GET(req: Request) {
         content: x.content || "",
         company: x.company || "general",
         ownerUid: x.ownerUid || "",
-        ownerName: x.ownerName || "Someone",
-        createdAt: x.createdAt?.toDate?.()?.toISOString?.() ?? "",
+                createdAt: x.createdAt?.toDate?.()?.toISOString?.() ?? "",
         updatedAt: x.updatedAt?.toDate?.()?.toISOString?.() ?? "",
       };
     });
@@ -53,7 +52,6 @@ export async function POST(req: Request) {
       content,
       company,
       ownerUid: user.uid,
-      ownerName: user.name,
       createdAt: now,
       updatedAt: now,
     });

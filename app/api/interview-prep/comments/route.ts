@@ -32,7 +32,6 @@ export async function GET(req: Request) {
           id: d.id,
           postId: x.postId || "",
           userId: x.userId || "",
-          userName: x.userName || "Someone",
           text: x.text || "",
           createdAt: x.createdAt?.toDate?.()?.toISOString?.() ?? "",
         };
@@ -59,7 +58,6 @@ export async function POST(req: Request) {
     const ref = await adminDb.collection(COLLECTION).add({
       postId,
       userId: user.uid,
-      userName: user.name,
       text,
       createdAt: FieldValue.serverTimestamp(),
     });

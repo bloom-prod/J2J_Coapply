@@ -57,7 +57,7 @@ function mapDoc(d: QueryDocumentSnapshot<DocumentData>): Job {
     notes: x.notes || "",
     starred: x.starred === true || x.starred === "true",
     ownerUid: x.ownerUid || "",
-    ownerName: x.ownerName || "Someone",
+    ownerName: "",
     added: tsToISO(x.createdAt),
     updated: tsToISO(x.updatedAt),
   };
@@ -72,7 +72,7 @@ function mapFeed(d: QueryDocumentSnapshot<DocumentData>): FeedEvent {
     role: x.role || "",
     status: x.status || "",
     ownerUid: x.ownerUid || "",
-    ownerName: x.ownerName || "Someone",
+    ownerName: "",
     ts: ts && typeof ts.toDate === "function" ? ts.toDate() : null,
   };
 }
@@ -204,10 +204,10 @@ export function useBloom() {
       .filter((j) => !pending.deletes[j.id])
       .map((j) => (pending.patches[j.id] ? { ...j, ...pending.patches[j.id] } : j));
     const adds = pending.adds.filter((a) => !serverJobs.some((s) => s.id === a.id));
-    const list = [...adds, ...patched].map((j) => {
-      const resolved = j.ownerUid ? uidNameMap.get(j.ownerUid) : undefined;
-      return resolved ? { ...j, ownerName: resolved } : j;
-    });
+    const list = [...adds, ...patched].map((j) => ({
+      ...j,
+      ownerName: (j.ownerUid ? uidNameMap.get(j.ownerUid) : undefined) ?? j.ownerName,
+    }));
     list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
     return list;
   }, [serverJobs, pending, uidNameMap]);
@@ -219,10 +219,10 @@ export function useBloom() {
 
   // Resolve feed names from uid→name map
   const feed = useMemo<FeedEvent[]>(
-    () => rawFeed.map((e) => {
-      const resolved = e.ownerUid ? uidNameMap.get(e.ownerUid) : undefined;
-      return resolved ? { ...e, ownerName: resolved } : e;
-    }),
+    () => rawFeed.map((e) => ({
+      ...e,
+      ownerName: (e.ownerUid ? uidNameMap.get(e.ownerUid) : undefined) ?? e.ownerName,
+    })),
     [rawFeed, uidNameMap]
   );
 
