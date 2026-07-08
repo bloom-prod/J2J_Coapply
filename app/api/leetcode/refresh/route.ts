@@ -208,6 +208,7 @@ interface SyncResult {
 
 async function syncUser(
   uid: string,
+  userName: string,
   repoUrl: string,
   profileData: Record<string, unknown>,
   forceRefresh: boolean
@@ -299,13 +300,13 @@ async function syncUser(
       });
     }
 
-    // 6) Write to Firestore
+    // 6) Write to Firestore - root collection with userId
     const profileRef = adminDb.collection("userProfiles").doc(uid);
     const batch = adminDb.batch();
     batch.update(profileRef, { leetcodeLastSyncedAt: FieldValue.serverTimestamp() });
 
     for (const p of newProblems) {
-      const ref = profileRef.collection("leetcodeProblems").doc(p.problemId);
+      const ref = adminDb.collection("leetcodeProblems").doc(p.problemId);
       batch.set(ref, {
         problemId: p.problemId,
         title: p.title,
@@ -314,6 +315,8 @@ async function syncUser(
         commitHash: p.commitHash,
         solvedAt: p.solvedAt,
         syncedAt: FieldValue.serverTimestamp(),
+        userId: uid,
+        userName: userName,
       });
     }
 
@@ -343,13 +346,14 @@ export async function POST(req: Request) {
 
     // Get all users with leetcodeRepoUrl configured
     const profiles = await adminDb.collection("userProfiles").get();
-    const usersToSync: Array<{ uid: string; repoUrl: string; profileData: Record<string, unknown> }> = [];
+    const usersToSync: Array<{ uid: string; userName: string; repoUrl: string; profileData: Record<string, unknown> }> = [];
 
     profiles.forEach((doc) => {
       const data = doc.data() as Record<string, unknown>;
       const repoUrl = (data.leetcodeRepoUrl || "") as string;
+      const userName = (data.name || "Someone") as string;
       if (repoUrl) {
-        usersToSync.push({ uid: doc.id, repoUrl, profileData: data });
+        usersToSync.push({ uid: doc.id, userName, repoUrl, profileData: data });
       }
     });
 
@@ -368,7 +372,7 @@ export async function POST(req: Request) {
     let errorCount = 0;
 
     for (const user of usersToSync) {
-      const result = await syncUser(user.uid, user.repoUrl, user.profileData, forceRefresh);
+      const result = await syncUser(user.uid, user.userName, user.repoUrl, user.profileData, forceRefresh);
       results.push(result);
       
       if (result.success) {

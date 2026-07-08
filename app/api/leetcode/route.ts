@@ -20,7 +20,15 @@ export async function GET(req: Request) {
   try {
     await requireUser(req);
 
-    const profiles = await adminDb.collection("userProfiles").get();
+    // Get all problems from root collection
+    const problemsSnap = await adminDb.collection("leetcodeProblems").get();
+    
+    // Get all userProfiles for name resolution
+    const profilesSnap = await adminDb.collection("userProfiles").get();
+    const uidToName = new Map<string, string>();
+    profilesSnap.docs.forEach((doc) => {
+      uidToName.set(doc.id, doc.data().name || "Someone");
+    });
 
     const languageCounts: Record<string, number> = {};
     const difficultyCounts: Record<string, number> = {};
@@ -37,61 +45,47 @@ export async function GET(req: Request) {
     }> = [];
     let totalSolved = 0;
 
-    for (const profile of profiles.docs) {
-      const uid = profile.id;
-      const profileData = profile.data() as { name?: string; leetcodeRepoUrl?: string };
+    problemsSnap.forEach((doc) => {
+      const p = doc.data() as Record<string, unknown>;
+      const uid = (p.userId as string) || "";
+      const userName = (p.userName as string) || uidToName.get(uid) || "Someone";
 
-      const problemsSnap = await adminDb
-        .collection("userProfiles")
-        .doc(uid)
-        .collection("leetcodeProblems")
-        .get();
-
-      let userCount = 0;
+      totalSolved++;
       
-      // Get name from profile, or fallback to Firebase Auth displayName, or "Someone"
-      let userName = profileData.name;
-      if (!userName) {
-        try {
-          const userRecord = await adminAuth.getUser(uid);
-          userName = userRecord.displayName || userRecord.email || "Someone";
-        } catch {
-          userName = "Someone";
-        }
+      // Count per user
+      if (!userCounts[uid]) {
+        userCounts[uid] = { name: userName, count: 0 };
       }
+      userCounts[uid].count++;
 
-      problemsSnap.forEach((doc) => {
-        const p = doc.data() as Record<string, unknown>;
-        totalSolved++;
-        userCount++;
-        if (typeof p.language === "string") {
-          languageCounts[p.language] = (languageCounts[p.language] || 0) + 1;
-        }
-        if (typeof p.difficulty === "string") {
-          difficultyCounts[p.difficulty] = (difficultyCounts[p.difficulty] || 0) + 1;
-        }
-        if (typeof p.solvedAt === "string") {
-          const w = weekMonday(p.solvedAt.slice(0, 10));
-          weekly[w] = (weekly[w] || 0) + 1;
-          if (!weeklyByUser[w]) weeklyByUser[w] = {};
-          weeklyByUser[w][userName] = (weeklyByUser[w][userName] || 0) + 1;
-
-          // Collect for activity feed
-          recentActivity.push({
-            userName,
-            problemId: (p.problemId as string) || doc.id,
-            title: (p.title as string) || "Unknown Problem",
-            difficulty: (p.difficulty as string) || "unknown",
-            language: p.language as string,
-            solvedAt: p.solvedAt as string,
-          });
-        }
-      });
-
-      if (userCount > 0) {
-        userCounts[uid] = { name: userName, count: userCount };
+      // Language counts
+      if (typeof p.language === "string") {
+        languageCounts[p.language] = (languageCounts[p.language] || 0) + 1;
       }
-    }
+      
+      // Difficulty counts
+      if (typeof p.difficulty === "string") {
+        difficultyCounts[p.difficulty] = (difficultyCounts[p.difficulty] || 0) + 1;
+      }
+      
+      // Weekly volume
+      if (typeof p.solvedAt === "string") {
+        const w = weekMonday(p.solvedAt.slice(0, 10));
+        weekly[w] = (weekly[w] || 0) + 1;
+        if (!weeklyByUser[w]) weeklyByUser[w] = {};
+        weeklyByUser[w][userName] = (weeklyByUser[w][userName] || 0) + 1;
+
+        // Collect for activity feed
+        recentActivity.push({
+          userName,
+          problemId: (p.problemId as string) || doc.id,
+          title: (p.title as string) || "Unknown Problem",
+          difficulty: (p.difficulty as string) || "unknown",
+          language: p.language as string,
+          solvedAt: p.solvedAt as string,
+        });
+      }
+    });
 
     const totalUsers = Object.keys(userCounts).length;
     const weeklyVolume = Object.entries(weekly)

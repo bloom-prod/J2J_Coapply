@@ -39,8 +39,8 @@ function chartAxisStyle(dark: boolean) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-interface TipProps { active?: boolean; payload?: any[]; label?: string; dark: boolean }
-function ChartTip({ active, payload, label, dark }: TipProps) {
+interface TipProps { active?: boolean; payload?: any[]; label?: string; dark: boolean; nameMap?: Map<string, string> }
+function ChartTip({ active, payload, label, dark, nameMap }: TipProps) {
   if (!active || !payload?.length) return null;
   return (
     <div style={{
@@ -52,9 +52,12 @@ function ChartTip({ active, payload, label, dark }: TipProps) {
       whiteSpace: "nowrap",
     }}>
       {label && <div style={{ opacity: 0.7, marginBottom: 2 }}>{label}</div>}
-      {payload.map((p, i) => (
-        <div key={i}><strong>{p.value}</strong>{payload.length > 1 ? ` ${p.name}` : ""}</div>
-      ))}
+      {payload.map((p, i) => {
+        const displayName = nameMap?.get(p.name) || p.name;
+        return (
+          <div key={i}><strong>{p.value}</strong>{payload.length > 1 ? ` ${displayName}` : ""}</div>
+        );
+      })}
     </div>
   );
 }
@@ -105,8 +108,8 @@ function VBar({ data, fill, dark }: { data: { name: string; value: number }[]; f
   );
 }
 
-export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; feed: FeedEvent[]; userProfiles: Map<string, { name: string; color: string }> }) {
-  const uc = (uid: string, i: number) => userProfiles.get(uid)?.color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length];
+export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; feed: FeedEvent[]; userProfiles: Map<string, { name: string; color: string }> | null }) {
+  const uc = (uid: string, i: number) => userProfiles?.get(uid)?.color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length];
   const [stats, setStats] = useState<CommunityStats | null>(null);
 
   // Headline numbers from the server-side aggregator. Refresh as the pool changes.
@@ -145,10 +148,21 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
       if (o !== undefined) for (let i = 0; i <= o; i++) funnelReached[i]++;
     });
 
-    const resolveName = (uid: string) => userProfiles.get(uid)?.name ?? "Unknown";
+    const resolveName = (uid: string) => {
+      if (userProfiles?.has(uid)) {
+        return userProfiles.get(uid)!.name;
+      }
+      // Fallback: if this is the current user, use their auth info
+      if (uid === auth.currentUser?.uid) {
+        return auth.currentUser.displayName || auth.currentUser.email || "You";
+      }
+      return `User ${uid.slice(0, 6)}`;
+    };
 
     const weeklyUids = [...new Set(allJobs.map((j) => j.ownerUid).filter(Boolean) as string[])];
     const weeklyUserMeta = weeklyUids.map((uid) => ({ uid, name: resolveName(uid) }));
+    // Create uid->name mapping for chart labels
+    const uidToName = new Map(weeklyUserMeta.map(u => [u.uid, u.name]));
 
     // Weekly volume per user — last 12 weeks
     const todayW = new Date(); todayW.setHours(0, 0, 0, 0);
@@ -170,7 +184,7 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
     });
     const weeklyData = weekKeys.map((iso) => {
       const obj: Record<string, string | number> = { week: fmtWeekLabel(iso) };
-      weeklyUserMeta.forEach(({ uid, name }) => { obj[name] = weeklyByUid[iso]?.[uid] || 0; });
+      weeklyUserMeta.forEach(({ uid }) => { obj[uid] = weeklyByUid[iso]?.[uid] || 0; });
       return obj;
     });
 
@@ -188,12 +202,14 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
       allJobs.filter((j) => j.roleCategory || classifyRole(j.role)).map((j) => j.ownerUid).filter(Boolean) as string[]
     )];
     const roleCatUserMeta = roleCatUids.map((uid) => ({ uid, name: resolveName(uid) }));
+    // Create uid->name mapping for role chart
+    const roleUidToName = new Map(roleCatUserMeta.map(u => [u.uid, u.name]));
     const roleCatData = Object.entries(roleCatByUid)
       .sort((a, b) => Object.values(b[1]).reduce((s, n) => s + n, 0) - Object.values(a[1]).reduce((s, n) => s + n, 0))
       .slice(0, 8)
       .map(([cat, byUid]) => {
         const obj: Record<string, string | number> = { cat };
-        roleCatUserMeta.forEach(({ uid, name }) => { obj[name] = byUid[uid] || 0; });
+        roleCatUserMeta.forEach(({ uid }) => { obj[uid] = byUid[uid] || 0; });
         return obj;
       });
 
@@ -201,7 +217,7 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
       status: STATUSES.map((s) => ({ name: s, value: sc[s] })),
       funnel: ["Phone Screen", "Interview", "Offer"].map((s, i) => ({ name: s, value: funnelReached[i] })),
       companies: Object.entries(cc).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, value]) => ({ name, value })),
-      weeklyData, weeklyUserMeta, roleCatData, roleCatUserMeta,
+      weeklyData, weeklyUserMeta, uidToName, roleCatData, roleCatUserMeta, roleUidToName,
     };
   }, [allJobs, userProfiles]);
 
@@ -211,7 +227,8 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
       if (j.status === "Want to Apply") return; // saved jobs don't count
       const uid = j.ownerUid;
       if (!uid) return;
-      if (!by[uid]) by[uid] = { uid, name: userProfiles.get(uid)?.name ?? "Unknown", total: 0, interviews: 0, offers: 0, responded: 0 };
+      const userName = userProfiles?.get(uid)?.name || (uid === auth.currentUser?.uid ? (auth.currentUser.displayName || auth.currentUser.email || "You") : `User ${uid.slice(0, 6)}`);
+      if (!by[uid]) by[uid] = { uid, name: userName, total: 0, interviews: 0, offers: 0, responded: 0 };
       const u = by[uid];
       u.total++;
       if (j.status === "Interview" || j.status === "Offer") u.interviews++;
@@ -268,10 +285,10 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
                   <CartesianGrid vertical={false} stroke={dark ? "#2E2B3C" : "#F0F5F0"} />
                   <XAxis dataKey="cat" tick={{ fontSize: 10, fill: dark ? "#A89EC0" : "#9E9088" }} interval={0} angle={-30} textAnchor="end" tickFormatter={(v: string) => v.length > 12 ? v.slice(0, 11) + "…" : v} />
                   <YAxis allowDecimals={false} tick={chartAxisStyle(dark)} />
-                  <Tooltip content={(p) => <ChartTip {...p} dark={dark} />} />
-                  <Legend verticalAlign="top" align="right" wrapperStyle={{ fontSize: 11, color: dark ? "#A89EC0" : "#6B5E52", paddingBottom: 4 }} />
-                  {charts.roleCatUserMeta.map(({ uid, name }, i) => (
-                    <Bar key={uid} dataKey={name} stackId="s" fill={uc(uid, i)} radius={i === charts.roleCatUserMeta.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
+                  <Tooltip content={(p) => <ChartTip {...p} dark={dark} nameMap={charts.roleUidToName} />} />
+                  <Legend verticalAlign="top" align="right" wrapperStyle={{ fontSize: 11, color: dark ? "#A89EC0" : "#6B5E52", paddingBottom: 4 }} formatter={(value) => charts.roleUidToName.get(value) || value} />
+                  {charts.roleCatUserMeta.map(({ uid }, i) => (
+                    <Bar key={uid} dataKey={uid} stackId="s" fill={uc(uid, i)} radius={i === charts.roleCatUserMeta.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
                   ))}
                 </BarChart>
               </ResponsiveContainer>
@@ -286,10 +303,10 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
                   <CartesianGrid stroke={dark ? "#2E2B3C" : "#F0F5F0"} vertical={false} />
                   <XAxis dataKey="week" tick={chartAxisStyle(dark)} />
                   <YAxis allowDecimals={false} tick={chartAxisStyle(dark)} />
-                  <Tooltip content={(p) => <ChartTip {...p} dark={dark} />} />
-                  <Legend wrapperStyle={{ fontSize: 12, color: dark ? "#A89EC0" : "#9E9088" }} />
-                  {charts.weeklyUserMeta.map(({ uid, name }, i) => (
-                    <Line key={uid} dataKey={name} type="monotone" stroke={uc(uid, i)} strokeWidth={2} dot={false} />
+                  <Tooltip content={(p) => <ChartTip {...p} dark={dark} nameMap={charts.uidToName} />} />
+                  <Legend wrapperStyle={{ fontSize: 12, color: dark ? "#A89EC0" : "#9E9088" }} formatter={(value) => charts.uidToName.get(value) || value} />
+                  {charts.weeklyUserMeta.map(({ uid }, i) => (
+                    <Line key={uid} dataKey={uid} type="monotone" stroke={uc(uid, i)} strokeWidth={2} dot={false} />
                   ))}
                 </LineChart>
               </ResponsiveContainer>

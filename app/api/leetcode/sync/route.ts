@@ -54,6 +54,7 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as {
       uid?: string;
+      userName?: string;
       problems?: Array<{
         problemId: string;
         title: string;
@@ -69,12 +70,16 @@ export async function POST(req: Request) {
     }
 
     const uid = body.uid;
+    const userName = body.userName || "Someone";
     const batch = adminDb.batch();
+    
+    // Update user's last synced timestamp
     const userRef = adminDb.collection("userProfiles").doc(uid);
     batch.update(userRef, { leetcodeLastSyncedAt: FieldValue.serverTimestamp() });
 
+    // Write problems to root collection with userId
     for (const p of body.problems) {
-      const ref = userRef.collection("leetcodeProblems").doc(p.problemId);
+      const ref = adminDb.collection("leetcodeProblems").doc(p.problemId);
       batch.set(ref, {
         problemId: p.problemId,
         title: p.title,
@@ -83,6 +88,8 @@ export async function POST(req: Request) {
         commitHash: p.commitHash,
         solvedAt: p.solvedAt,
         syncedAt: FieldValue.serverTimestamp(),
+        userId: uid,
+        userName: userName,
       });
     }
 
