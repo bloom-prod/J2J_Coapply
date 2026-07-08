@@ -17,12 +17,23 @@ export async function GET(req: Request) {
   try {
     await requireUser(req);
     const snap = await adminDb.collection(RESUMES).orderBy("createdAt", "desc").get();
+    // Fetch userProfiles to resolve current names
+    const profilesSnap = await adminDb.collection("userProfiles").get();
+    const uidToName = new Map();
+    profilesSnap.docs.forEach((d) => {
+      const name = d.data().name;
+      if (name) uidToName.set(d.id, name);
+    });
+
     const resumes = snap.docs.map((d) => {
       const x = d.data();
+      const userId = x.userId || "";
+      // Resolve current name from userProfiles, fallback to stored name or "Someone"
+      const userName = uidToName.get(userId) || x.userName || "Someone";
       return {
         id: d.id,
-        userId: x.userId || "",
-        userName: x.userName || "Someone",
+        userId,
+        userName,
         title: x.title || "",
         fileName: x.fileName || "",
         uploadedAt: x.createdAt?.toDate?.()?.toISOString?.() ?? "",

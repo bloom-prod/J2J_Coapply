@@ -16,14 +16,25 @@ export async function GET(req: Request) {
   try {
     await requireUser(req);
     const snap = await adminDb.collection(COLLECTION).orderBy("createdAt", "desc").get();
+    // Fetch userProfiles to resolve names
+    const profilesSnap = await adminDb.collection("userProfiles").get();
+    const uidToName = new Map();
+    profilesSnap.docs.forEach((d) => {
+      const name = d.data().name;
+      if (name) uidToName.set(d.id, name);
+    });
+
     const posts = snap.docs.map((d) => {
       const x = d.data();
+      const ownerUid = x.ownerUid || "";
+      const ownerName = uidToName.get(ownerUid) || "";
       return {
         id: d.id,
         title: x.title || "",
         content: x.content || "",
         company: x.company || "general",
-        ownerUid: x.ownerUid || "",
+        ownerUid,
+        ownerName,
                 createdAt: x.createdAt?.toDate?.()?.toISOString?.() ?? "",
         updatedAt: x.updatedAt?.toDate?.()?.toISOString?.() ?? "",
       };

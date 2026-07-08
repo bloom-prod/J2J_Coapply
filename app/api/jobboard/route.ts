@@ -17,8 +17,18 @@ export async function GET(req: Request) {
   try {
     await requireUser(req);
     const snap = await adminDb.collection(JOBBOARD).orderBy("createdAt", "desc").get();
+    // Fetch userProfiles to resolve names
+    const profilesSnap = await adminDb.collection("userProfiles").get();
+    const uidToName = new Map();
+    profilesSnap.docs.forEach((d) => {
+      const name = d.data().name;
+      if (name) uidToName.set(d.id, name);
+    });
+
     const posts = snap.docs.map((d) => {
       const x = d.data();
+      const ownerUid = x.ownerUid || "";
+      const ownerName = uidToName.get(ownerUid) || "";
       return {
         id: d.id,
         company: x.company || "",
@@ -26,7 +36,8 @@ export async function GET(req: Request) {
         url: x.url || "",
         location: x.location || "",
         notes: x.notes || "",
-        ownerUid: x.ownerUid || "",
+        ownerUid,
+        ownerName,
                 postedAt: x.createdAt?.toDate?.()?.toISOString?.() ?? "",
       };
     });

@@ -25,13 +25,24 @@ export async function GET(req: Request) {
       .where("postId", "==", postId)
       .get();
 
+    // Fetch userProfiles to resolve names
+    const profilesSnap = await adminDb.collection("userProfiles").get();
+    const uidToName = new Map();
+    profilesSnap.docs.forEach((d) => {
+      const name = d.data().name;
+      if (name) uidToName.set(d.id, name);
+    });
+
     const comments = snap.docs
       .map((d) => {
         const x = d.data();
+        const userId = x.userId || "";
+        const userName = uidToName.get(userId) || "";
         return {
           id: d.id,
           postId: x.postId || "",
-          userId: x.userId || "",
+          userId,
+          userName,
           text: x.text || "",
           createdAt: x.createdAt?.toDate?.()?.toISOString?.() ?? "",
         };
