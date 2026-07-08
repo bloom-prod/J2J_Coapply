@@ -117,6 +117,7 @@ export function useBloom() {
       names.set(d.id, name);
       profiles.set(d.id, { name, color });
     });
+    console.log("[bloom] userProfiles snapshot:", snap.docs.length, "docs ->", Object.fromEntries(names));
     setUidNameMap(names);
     setUserProfiles(profiles);
     // Signal profiles ready; clear loading if apps snapshot already arrived
@@ -158,6 +159,7 @@ export function useBloom() {
     const unsubApps = onSnapshot(
       collection(db, "applications"),
       (snap) => {
+        console.log("[bloom] applications snapshot:", snap.docs.length, "docs");
         setServerJobs(snap.docs.map(mapDoc));
         if (firstSnap.current) {
           firstSnap.current = false;
@@ -171,7 +173,14 @@ export function useBloom() {
 
     const unsubFeed = onSnapshot(
       query(collection(db, "feed"), orderBy("ts", "desc"), limit(10)),
-      (snap) => setRawFeed(snap.docs.map(mapFeed)),
+      (snap) => {
+        console.log("[bloom] feed snapshot:", snap.docs.length, "docs");
+        snap.docs.forEach((d) => {
+          const data = d.data();
+          console.log("  feed doc:", d.id, "| ownerUid:", JSON.stringify(data.ownerUid), "| company:", data.company);
+        });
+        setRawFeed(snap.docs.map(mapFeed));
+      },
       (err) => console.error("feed snapshot error", err)
     );
 
@@ -209,6 +218,11 @@ export function useBloom() {
       ownerName: (j.ownerUid ? uidNameMap.get(j.ownerUid) : undefined) ?? (j.ownerName || "Someone"),
     }));
     list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    // Log resolution results
+    const unresolved = list.filter((j) => j.ownerUid && !uidNameMap.get(j.ownerUid));
+    if (unresolved.length) {
+      console.log("[bloom] allJobs unresolved UIDs:", [...new Set(unresolved.map((j) => j.ownerUid))], "| uidNameMap size:", uidNameMap.size);
+    }
     return list;
   }, [serverJobs, pending, uidNameMap]);
 
@@ -219,10 +233,17 @@ export function useBloom() {
 
   // Resolve feed names from uid→name map
   const feed = useMemo<FeedEvent[]>(
-    () => rawFeed.map((e) => ({
-      ...e,
-      ownerName: (e.ownerUid ? uidNameMap.get(e.ownerUid) : undefined) ?? (e.ownerName || "Someone"),
-    })),
+    () => {
+      const resolved = rawFeed.map((e) => {
+        const mapped = e.ownerUid ? uidNameMap.get(e.ownerUid) : undefined;
+        const ownerName = mapped ?? (e.ownerName || "Someone");
+        if (e.ownerUid && !mapped) {
+          console.log("[bloom] feed unresolved UID:", JSON.stringify(e.ownerUid), "| company:", e.company, "| uidNameMap size:", uidNameMap.size);
+        }
+        return { ...e, ownerName };
+      });
+      return resolved;
+    },
     [rawFeed, uidNameMap]
   );
 
