@@ -107,7 +107,6 @@ function VBar({ data, fill, dark }: { data: { name: string; value: number }[]; f
 
 export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; feed: FeedEvent[]; userProfiles: Map<string, { name: string; color: string }> }) {
   const uc = (uid: string, i: number) => userProfiles.get(uid)?.color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length];
-  const uidToName = (uid: string) => userProfiles.get(uid)?.name ?? "Unknown";
   const [stats, setStats] = useState<CommunityStats | null>(null);
 
   // Headline numbers from the server-side aggregator. Refresh as the pool changes.
@@ -146,8 +145,10 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
       if (o !== undefined) for (let i = 0; i <= o; i++) funnelReached[i]++;
     });
 
-    const weeklyUids = [...new Set(allJobs.map((j) => j.ownerUid || "?"))];
-    const weeklyUserMeta = weeklyUids.map((uid) => ({ uid, name: uidToName(uid) }));
+    const resolveName = (uid: string) => userProfiles.get(uid)?.name ?? "Unknown";
+
+    const weeklyUids = [...new Set(allJobs.map((j) => j.ownerUid).filter(Boolean) as string[])];
+    const weeklyUserMeta = weeklyUids.map((uid) => ({ uid, name: resolveName(uid) }));
 
     // Weekly volume per user — last 12 weeks
     const todayW = new Date(); todayW.setHours(0, 0, 0, 0);
@@ -162,7 +163,8 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
       if (!j.date) return;
       const w = weekMonday(j.date);
       if (!weekKeys.includes(w)) return;
-      const uid = j.ownerUid || "?";
+      const uid = j.ownerUid;
+      if (!uid) return;
       if (!weeklyByUid[w]) weeklyByUid[w] = {};
       weeklyByUid[w][uid] = (weeklyByUid[w][uid] || 0) + 1;
     });
@@ -177,14 +179,15 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
     allJobs.forEach((j) => {
       const cat = j.roleCategory || classifyRole(j.role);
       if (!cat) return;
-      const uid = j.ownerUid || "?";
+      const uid = j.ownerUid;
+      if (!uid) return;
       if (!roleCatByUid[cat]) roleCatByUid[cat] = {};
       roleCatByUid[cat][uid] = (roleCatByUid[cat][uid] || 0) + 1;
     });
     const roleCatUids = [...new Set(
-      allJobs.filter((j) => j.roleCategory || classifyRole(j.role)).map((j) => j.ownerUid || "?")
+      allJobs.filter((j) => j.roleCategory || classifyRole(j.role)).map((j) => j.ownerUid).filter(Boolean) as string[]
     )];
-    const roleCatUserMeta = roleCatUids.map((uid) => ({ uid, name: uidToName(uid) }));
+    const roleCatUserMeta = roleCatUids.map((uid) => ({ uid, name: resolveName(uid) }));
     const roleCatData = Object.entries(roleCatByUid)
       .sort((a, b) => Object.values(b[1]).reduce((s, n) => s + n, 0) - Object.values(a[1]).reduce((s, n) => s + n, 0))
       .slice(0, 8)
@@ -206,8 +209,9 @@ export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; 
     const by: Record<string, { uid: string; name: string; total: number; interviews: number; offers: number; responded: number }> = {};
     allJobs.forEach((j) => {
       if (j.status === "Want to Apply") return; // saved jobs don't count
-      const uid = j.ownerUid || "?";
-      if (!by[uid]) by[uid] = { uid, name: uidToName(uid), total: 0, interviews: 0, offers: 0, responded: 0 };
+      const uid = j.ownerUid;
+      if (!uid) return;
+      if (!by[uid]) by[uid] = { uid, name: userProfiles.get(uid)?.name ?? "Unknown", total: 0, interviews: 0, offers: 0, responded: 0 };
       const u = by[uid];
       u.total++;
       if (j.status === "Interview" || j.status === "Offer") u.interviews++;
