@@ -206,7 +206,7 @@ export function useBloom() {
     const adds = pending.adds.filter((a) => !serverJobs.some((s) => s.id === a.id));
     const list = [...adds, ...patched].map((j) => ({
       ...j,
-      ownerName: (j.ownerUid ? uidNameMap.get(j.ownerUid) : undefined) ?? j.ownerName,
+      ownerName: (j.ownerUid ? uidNameMap.get(j.ownerUid) : undefined) ?? (j.ownerName || "Someone"),
     }));
     list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
     return list;
@@ -221,7 +221,7 @@ export function useBloom() {
   const feed = useMemo<FeedEvent[]>(
     () => rawFeed.map((e) => ({
       ...e,
-      ownerName: (e.ownerUid ? uidNameMap.get(e.ownerUid) : undefined) ?? e.ownerName,
+      ownerName: (e.ownerUid ? uidNameMap.get(e.ownerUid) : undefined) ?? (e.ownerName || "Someone"),
     })),
     [rawFeed, uidNameMap]
   );
