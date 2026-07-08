@@ -174,7 +174,7 @@ export default function Page() {
                 />
               </TabsContent>
               <TabsContent value="community">
-                <CommunityTab allJobs={bloom.allJobs} feed={bloom.feed} userColors={bloom.userColors} />
+                <CommunityTab allJobs={bloom.allJobs} feed={bloom.feed} userProfiles={bloom.userProfiles ?? new Map()} />
               </TabsContent>
               <TabsContent value="discover">
                 <DiscoverTab allJobs={bloom.allJobs} myJobs={bloom.myJobs} onSaveToTracker={openPrefilled} />

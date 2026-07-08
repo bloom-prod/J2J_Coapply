@@ -634,6 +634,7 @@ export function useBloom() {
     interviewPrepPosts: resolvedInterviewPrepPosts,
     interviewPrepComments: resolvedInterviewPrepComments,
     userColors,
+    userProfiles,
     createJob,
     updateJob,
     deleteJob,

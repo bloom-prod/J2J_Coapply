@@ -105,8 +105,9 @@ function VBar({ data, fill, dark }: { data: { name: string; value: number }[]; f
   );
 }
 
-export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; feed: FeedEvent[]; userColors: Map<string, string> }) {
-  const uc = (name: string, i: number) => userColors.get(name) ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length];
+export function CommunityTab({ allJobs, feed, userProfiles }: { allJobs: Job[]; feed: FeedEvent[]; userProfiles: Map<string, { name: string; color: string }> }) {
+  const uc = (uid: string, i: number) => userProfiles.get(uid)?.color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length];
+  const uidToName = (uid: string) => userProfiles.get(uid)?.name ?? "Unknown";
   const [stats, setStats] = useState<CommunityStats | null>(null);
 
   // Headline numbers from the server-side aggregator. Refresh as the pool changes.
@@ -145,7 +146,8 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
       if (o !== undefined) for (let i = 0; i <= o; i++) funnelReached[i]++;
     });
 
-    const weeklyUsers = [...new Set(allJobs.map((j) => j.ownerName || "Unknown"))];
+    const weeklyUids = [...new Set(allJobs.map((j) => j.ownerUid || "?"))];
+    const weeklyUserMeta = weeklyUids.map((uid) => ({ uid, name: uidToName(uid) }));
 
     // Weekly volume per user — last 12 weeks
     const todayW = new Date(); todayW.setHours(0, 0, 0, 0);
@@ -155,39 +157,40 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
       const d = new Date(thisMon + "T00:00:00"); d.setDate(d.getDate() - i * 7);
       weekKeys.push(d.toISOString().slice(0, 10));
     }
-    const weeklyByUser: Record<string, Record<string, number>> = {};
+    const weeklyByUid: Record<string, Record<string, number>> = {};
     allJobs.forEach((j) => {
       if (!j.date) return;
       const w = weekMonday(j.date);
       if (!weekKeys.includes(w)) return;
-      const name = j.ownerName || "Unknown";
-      if (!weeklyByUser[w]) weeklyByUser[w] = {};
-      weeklyByUser[w][name] = (weeklyByUser[w][name] || 0) + 1;
+      const uid = j.ownerUid || "?";
+      if (!weeklyByUid[w]) weeklyByUid[w] = {};
+      weeklyByUid[w][uid] = (weeklyByUid[w][uid] || 0) + 1;
     });
     const weeklyData = weekKeys.map((iso) => {
       const obj: Record<string, string | number> = { week: fmtWeekLabel(iso) };
-      weeklyUsers.forEach((name) => { obj[name] = weeklyByUser[iso]?.[name] || 0; });
+      weeklyUserMeta.forEach(({ uid, name }) => { obj[name] = weeklyByUid[iso]?.[uid] || 0; });
       return obj;
     });
 
     // Role categories stacked by user
-    const roleCatByUser: Record<string, Record<string, number>> = {};
+    const roleCatByUid: Record<string, Record<string, number>> = {};
     allJobs.forEach((j) => {
       const cat = j.roleCategory || classifyRole(j.role);
       if (!cat) return;
-      const name = j.ownerName || "Unknown";
-      if (!roleCatByUser[cat]) roleCatByUser[cat] = {};
-      roleCatByUser[cat][name] = (roleCatByUser[cat][name] || 0) + 1;
+      const uid = j.ownerUid || "?";
+      if (!roleCatByUid[cat]) roleCatByUid[cat] = {};
+      roleCatByUid[cat][uid] = (roleCatByUid[cat][uid] || 0) + 1;
     });
-    const roleCatUsers = [...new Set(
-      allJobs.filter((j) => j.roleCategory || classifyRole(j.role)).map((j) => j.ownerName || "Unknown")
+    const roleCatUids = [...new Set(
+      allJobs.filter((j) => j.roleCategory || classifyRole(j.role)).map((j) => j.ownerUid || "?")
     )];
-    const roleCatData = Object.entries(roleCatByUser)
+    const roleCatUserMeta = roleCatUids.map((uid) => ({ uid, name: uidToName(uid) }));
+    const roleCatData = Object.entries(roleCatByUid)
       .sort((a, b) => Object.values(b[1]).reduce((s, n) => s + n, 0) - Object.values(a[1]).reduce((s, n) => s + n, 0))
       .slice(0, 8)
-      .map(([cat, byUser]) => {
+      .map(([cat, byUid]) => {
         const obj: Record<string, string | number> = { cat };
-        roleCatUsers.forEach((name) => { obj[name] = byUser[name] || 0; });
+        roleCatUserMeta.forEach(({ uid, name }) => { obj[name] = byUid[uid] || 0; });
         return obj;
       });
 
@@ -195,16 +198,16 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
       status: STATUSES.map((s) => ({ name: s, value: sc[s] })),
       funnel: ["Phone Screen", "Interview", "Offer"].map((s, i) => ({ name: s, value: funnelReached[i] })),
       companies: Object.entries(cc).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, value]) => ({ name, value })),
-      weeklyData, weeklyUsers, roleCatData, roleCatUsers,
+      weeklyData, weeklyUserMeta, roleCatData, roleCatUserMeta,
     };
-  }, [allJobs]);
+  }, [allJobs, userProfiles]);
 
   const leaderboard = useMemo(() => {
     const by: Record<string, { uid: string; name: string; total: number; interviews: number; offers: number; responded: number }> = {};
     allJobs.forEach((j) => {
       if (j.status === "Want to Apply") return; // saved jobs don't count
       const uid = j.ownerUid || "?";
-      if (!by[uid]) by[uid] = { uid, name: j.ownerName || "Someone", total: 0, interviews: 0, offers: 0, responded: 0 };
+      if (!by[uid]) by[uid] = { uid, name: uidToName(uid), total: 0, interviews: 0, offers: 0, responded: 0 };
       const u = by[uid];
       u.total++;
       if (j.status === "Interview" || j.status === "Offer") u.interviews++;
@@ -212,7 +215,7 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
       if (j.status !== "Applied" && j.status !== "Ghosted") u.responded++;
     });
     return Object.values(by).sort((a, b) => b.total - a.total);
-  }, [allJobs]);
+  }, [allJobs, userProfiles]);
 
   const dark = useDarkMode();
   const myUid = auth.currentUser?.uid;
@@ -263,8 +266,8 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
                   <YAxis allowDecimals={false} tick={chartAxisStyle(dark)} />
                   <Tooltip content={(p) => <ChartTip {...p} dark={dark} />} />
                   <Legend verticalAlign="top" align="right" wrapperStyle={{ fontSize: 11, color: dark ? "#A89EC0" : "#6B5E52", paddingBottom: 4 }} />
-                  {charts.roleCatUsers.map((name, i) => (
-                    <Bar key={name} dataKey={name} stackId="s" fill={uc(name, i)} radius={i === charts.roleCatUsers.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
+                  {charts.roleCatUserMeta.map(({ uid, name }, i) => (
+                    <Bar key={uid} dataKey={name} stackId="s" fill={uc(uid, i)} radius={i === charts.roleCatUserMeta.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]} />
                   ))}
                 </BarChart>
               </ResponsiveContainer>
@@ -281,8 +284,8 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
                   <YAxis allowDecimals={false} tick={chartAxisStyle(dark)} />
                   <Tooltip content={(p) => <ChartTip {...p} dark={dark} />} />
                   <Legend wrapperStyle={{ fontSize: 12, color: dark ? "#A89EC0" : "#9E9088" }} />
-                  {charts.weeklyUsers.map((name, i) => (
-                    <Line key={name} dataKey={name} type="monotone" stroke={uc(name, i)} strokeWidth={2} dot={false} />
+                  {charts.weeklyUserMeta.map(({ uid, name }, i) => (
+                    <Line key={uid} dataKey={name} type="monotone" stroke={uc(uid, i)} strokeWidth={2} dot={false} />
                   ))}
                 </LineChart>
               </ResponsiveContainer>
