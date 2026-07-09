@@ -181,14 +181,22 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
 
   const leaderboard = useMemo(() => {
     const by: Record<string, { uid: string; name: string; total: number; interviews: number; offers: number; responded: number }> = {};
+
+    // Seed all known gardeners from the server so everyone appears, even with 0 apps
+    if (stats?.uidToName) {
+      for (const [uid, name] of Object.entries(stats.uidToName)) {
+        by[uid] = { uid, name: name || "Someone", total: 0, interviews: 0, offers: 0, responded: 0 };
+      }
+    }
+
     allJobs.forEach((j) => {
-      if (j.status === "Want to Apply") return;
       const uid = j.ownerUid;
       if (!uid) return;
       const serverName = stats?.uidToName?.[uid];
       const userName = serverName || (uid === auth.currentUser?.uid ? (auth.currentUser.displayName || auth.currentUser.email || "You") : `User ${uid.slice(0, 6)}`);
       if (!by[uid]) by[uid] = { uid, name: userName, total: 0, interviews: 0, offers: 0, responded: 0 };
       const u = by[uid];
+      if (j.status === "Want to Apply") return; // count after ensuring user exists
       u.total++;
       if (j.status === "Interview" || j.status === "Offer") u.interviews++;
       if (j.status === "Offer") u.offers++;
