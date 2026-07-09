@@ -106,25 +106,6 @@ export function useBloom() {
   const firstSnap = useRef(true);
   const profilesReady = useRef(false);
 
-  // ---- user profiles — live listener for uid→name resolution ----
-  const applyProfileSnapshot = useCallback((snap: { docs: QueryDocumentSnapshot<DocumentData>[] }) => {
-    const names = new Map<string, string>();
-    const profiles = new Map<string, { name: string; color: string }>();
-    snap.docs.forEach((d, i) => {
-      const data = d.data();
-      const name = (data.name as string) || "Someone";
-      const color = NAME_COLOR_OVERRIDES[name] || (data.color as string) || USER_COLORS[i % USER_COLORS.length];
-      names.set(d.id, name);
-      profiles.set(d.id, { name, color });
-    });
-    console.log("[bloom] userProfiles snapshot:", snap.docs.length, "docs ->", Object.fromEntries(names));
-    setUidNameMap(names);
-    setUserProfiles(profiles);
-    // Signal profiles ready; clear loading if apps snapshot already arrived
-    profilesReady.current = true;
-    if (!firstSnap.current) setLoading(false);
-  }, []);
-
   // ---- auth ----
   useEffect(() => {
     return onAuthStateChanged(auth, (u) => {
@@ -159,11 +140,10 @@ export function useBloom() {
     const unsubApps = onSnapshot(
       collection(db, "applications"),
       (snap) => {
-        console.log("[bloom] applications snapshot:", snap.docs.length, "docs");
         setServerJobs(snap.docs.map(mapDoc));
         if (firstSnap.current) {
           firstSnap.current = false;
-          // Only clear loading once the profiles snapshot has also arrived,
+          // Only clear loading once the profiles fetch has also arrived,
           // so uidNameMap is populated before any name-resolved data renders.
           if (profilesReady.current) setLoading(false);
         }
@@ -173,39 +153,40 @@ export function useBloom() {
 
     const unsubFeed = onSnapshot(
       query(collection(db, "feed"), orderBy("ts", "desc"), limit(10)),
-      (snap) => {
-        console.log("[bloom] feed snapshot:", snap.docs.length, "docs");
-        snap.docs.forEach((d) => {
-          const data = d.data();
-          console.log("  feed doc:", d.id, "| ownerUid:", JSON.stringify(data.ownerUid), "| company:", data.company);
-        });
-        setRawFeed(snap.docs.map(mapFeed));
-      },
+      (snap) => setRawFeed(snap.docs.map(mapFeed)),
       (err) => console.error("feed snapshot error", err)
     );
 
-    const unsubProfiles = onSnapshot(
-      collection(db, "userProfiles"),
-      (snap) => applyProfileSnapshot(snap),
-      (err) => {
-        console.error("userProfiles snapshot error", err);
-        // Fallback: use current user info
-        const u = auth.currentUser;
-        if (!u) return;
-        const name = u.displayName || u.email || "Someone";
-        setUidNameMap(new Map([[u.uid, name]]));
-        setUserProfiles(new Map([[u.uid, { name, color: USER_COLORS[0] }]]));
+    // Fetch uid→name map from server (admin SDK bypasses Firestore client rules)
+    (async () => {
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) return;
+        const res = await fetch("/api/usernames", { headers: { Authorization: `Bearer ${token}` } });
+        const d = await res.json();
+        if (d.ok) {
+          const names = new Map<string, string>(Object.entries(d.uidToName));
+          const profiles = new Map<string, { name: string; color: string }>();
+          const colors = d.userColors as Record<string, string>;
+          for (const [uid, name] of names) {
+            profiles.set(uid, { name, color: colors[name] || USER_COLORS[0] });
+          }
+          setUidNameMap(names);
+          setUserProfiles(profiles);
+        }
+      } catch (err) {
+        console.error("usernames fetch error", err);
+      } finally {
         profilesReady.current = true;
         if (!firstSnap.current) setLoading(false);
       }
-    );
+    })();
 
     return () => {
       unsubApps();
       unsubFeed();
-      unsubProfiles();
     };
-  }, [user, applyProfileSnapshot]);
+  }, [user]);
 
   // ---- derived: merge server data with optimistic overlay + resolve names ----
   const allJobs = useMemo<Job[]>(() => {
@@ -218,11 +199,6 @@ export function useBloom() {
       ownerName: (j.ownerUid ? uidNameMap.get(j.ownerUid) : undefined) ?? (j.ownerName || "Someone"),
     }));
     list.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-    // Log resolution results
-    const unresolved = list.filter((j) => j.ownerUid && !uidNameMap.get(j.ownerUid));
-    if (unresolved.length) {
-      console.log("[bloom] allJobs unresolved UIDs:", [...new Set(unresolved.map((j) => j.ownerUid))], "| uidNameMap size:", uidNameMap.size);
-    }
     return list;
   }, [serverJobs, pending, uidNameMap]);
 
@@ -233,17 +209,10 @@ export function useBloom() {
 
   // Resolve feed names from uid→name map
   const feed = useMemo<FeedEvent[]>(
-    () => {
-      const resolved = rawFeed.map((e) => {
-        const mapped = e.ownerUid ? uidNameMap.get(e.ownerUid) : undefined;
-        const ownerName = mapped ?? (e.ownerName || "Someone");
-        if (e.ownerUid && !mapped) {
-          console.log("[bloom] feed unresolved UID:", JSON.stringify(e.ownerUid), "| company:", e.company, "| uidNameMap size:", uidNameMap.size);
-        }
-        return { ...e, ownerName };
-      });
-      return resolved;
-    },
+    () => rawFeed.map((e) => ({
+      ...e,
+      ownerName: (e.ownerUid ? uidNameMap.get(e.ownerUid) : undefined) ?? (e.ownerName || "Someone"),
+    })),
     [rawFeed, uidNameMap]
   );
 
