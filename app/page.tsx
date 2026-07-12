@@ -13,6 +13,7 @@ import { InterviewPrepTab } from "@/components/interview-prep-tab";
 import { ProfileTab } from "@/components/profile-tab";
 import { ResumeTab } from "@/components/resume-tab";
 import { ApplicationDialog } from "@/components/application-dialog";
+import { ImportDialog } from "@/components/import-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ export default function Page() {
   const bloom = useBloom();
   const [tab, setTab] = useState("tracker");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<Job | null>(null);
   const [prefill, setPrefill] = useState<Record<string, string> | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -64,6 +66,9 @@ export default function Page() {
     setEditing(null);
     setPrefill(null);
     setDialogOpen(true);
+  }
+  function openImport() {
+    setImportOpen(true);
   }
   function openEdit(job: Job) {
     setEditing(job);
@@ -142,7 +147,7 @@ export default function Page() {
           ) : (
             <>
               <TabsContent value="tracker">
-                <TrackerTab jobs={bloom.myJobs} onAdd={openAdd} onEdit={openEdit} onToggleStar={bloom.toggleStar} onShareToBoard={bloom.shareJob} sharedJobKeys={bloom.sharedJobKeys} />
+                <TrackerTab jobs={bloom.myJobs} onAdd={openAdd} onEdit={openEdit} onToggleStar={bloom.toggleStar} onShareToBoard={bloom.shareJob} sharedJobKeys={bloom.sharedJobKeys} onImport={openImport} />
               </TabsContent>
               <TabsContent value="insights">
                 <InsightsTab jobs={bloom.myJobs} onEdit={openEdit} />
@@ -191,6 +196,13 @@ export default function Page() {
         prefill={prefill}
         onSave={save}
         onDelete={bloom.deleteJob}
+      />
+
+      <ImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        existingJobs={bloom.myJobs}
+        onImport={bloom.bulkCreateJobs}
       />
 
       {/* Profile dialog */}

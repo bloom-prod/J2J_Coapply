@@ -275,6 +275,61 @@ export function useBloom() {
     [user, authedFetch]
   );
 
+  const bulkCreateJobs = useCallback(
+    async (rows: Record<string, string>[]) => {
+      if (!user || rows.length === 0) return;
+      const now = new Date().toISOString();
+      const tempJobs: Job[] = rows.map((data) => {
+        const tempId = "tmp-" + Math.random().toString(36).slice(2);
+        return {
+          id: tempId,
+          company: data.company || "",
+          role: data.role || "",
+          roleCategory: data.roleCategory || "",
+          status: data.status || "Applied",
+          priority: data.priority || "",
+          location: data.location || "",
+          date: data.date || "",
+          salary: data.salary || "",
+          url: data.url || "",
+          recruiter: data.recruiter || "",
+          followup: data.followup || "",
+          notes: data.notes || "",
+          starred: false,
+          ownerUid: user.uid,
+          ownerName: user.displayName || user.email || "You",
+          added: now,
+          updated: now,
+        };
+      });
+      const tempIds = tempJobs.map((j) => j.id);
+      setPending((p) => ({ ...p, adds: [...tempJobs, ...p.adds] }));
+      try {
+        const token = await auth.currentUser!.getIdToken();
+        const res = await fetch("/api/applications/bulk", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ jobs: rows }),
+        });
+        let d: { ok?: boolean; error?: string; created?: number } = {};
+        try {
+          d = await res.json();
+        } catch {
+          d = { ok: false, error: "Bad response from server" };
+        }
+        if (!res.ok || !d.ok) throw new Error(d.error || `Import failed (${res.status})`);
+      } catch (e) {
+        toast.error("Import failed — " + (e as Error).message);
+      } finally {
+        setPending((p) => ({
+          ...p,
+          adds: p.adds.filter((a) => !tempIds.includes(a.id)),
+        }));
+      }
+    },
+    [user]
+  );
+
   const updateJob = useCallback(
     async (id: string, data: Record<string, string>) => {
       setPending((p) => ({ ...p, patches: { ...p.patches, [id]: { ...p.patches[id], ...data } } }));
@@ -626,6 +681,7 @@ export function useBloom() {
     userColors,
     userProfiles,
     createJob,
+    bulkCreateJobs,
     updateJob,
     deleteJob,
     toggleStar,

@@ -20,6 +20,7 @@ export function TrackerTab({
   onToggleStar,
   onShareToBoard,
   sharedJobKeys,
+  onImport,
 }: {
   jobs: Job[];
   onAdd: () => void;
@@ -27,6 +28,7 @@ export function TrackerTab({
   onToggleStar: (id: string) => void;
   onShareToBoard: (data: { company: string; role: string; url: string; location: string; notes: string }) => Promise<void>;
   sharedJobKeys: Set<string>;
+  onImport: () => void;
 }) {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<string>("All");
@@ -179,6 +181,9 @@ export function TrackerTab({
           )}
           <Button className="rounded-full" onClick={onAdd}>
             <i className="ti ti-plus" /> Add application
+          </Button>
+          <Button variant="outline" className="rounded-full" onClick={onImport}>
+            <i className="ti ti-upload" /> Import
           </Button>
         </div>
       </div>
