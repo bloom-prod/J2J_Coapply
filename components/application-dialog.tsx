@@ -27,7 +27,7 @@ const EMPTY: Form = {
   company: "",
   role: "",
   roleCategory: "",
-  status: "Want to Apply",
+  status: "Applied",
   priority: "High",
   location: "",
   date: "",
