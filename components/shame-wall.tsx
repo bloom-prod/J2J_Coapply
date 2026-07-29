@@ -22,40 +22,47 @@ function ensureFlameStyles() {
       .shame-popup-dialog [style*="padding: 20px 22px"] { padding: 14px 16px 6px !important; }
       .shame-popup-dialog [style*="padding: 0 22px"] { padding: 0 16px 14px !important; }
     }
-    @keyframes flame-border {
+    /* Mild: pulses for ~5s then fades. Total 7s animation. */
+    /* 0-71% = 5s of pulsing, 71-100% = 2s fade out */
+    @keyframes flame-mild-full {
       0%   { box-shadow: 0 0 4px #ff4500, 0 0 8px #ff6a00, 0 0 12px #ff4500; }
-      25%  { box-shadow: 0 0 6px #ff6a00, 0 0 14px #ff4500, 0 0 20px #ff0000; }
+      12%  { box-shadow: 0 0 6px #ff6a00, 0 0 14px #ff4500, 0 0 20px #ff0000; }
+      25%  { box-shadow: 0 0 4px #ff4500, 0 0 8px #ff6a00, 0 0 12px #ff4500; }
+      37%  { box-shadow: 0 0 6px #ff6a00, 0 0 14px #ff4500, 0 0 20px #ff0000; }
+      50%  { box-shadow: 0 0 4px #ff4500, 0 0 8px #ff6a00, 0 0 12px #ff4500; }
+      62%  { box-shadow: 0 0 6px #ff6a00, 0 0 14px #ff4500, 0 0 20px #ff0000; }
+      71%  { box-shadow: 0 0 4px #ff4500, 0 0 8px #ff6a00, 0 0 12px #ff4500; }
+      100% { box-shadow: 0 0 0px transparent; }
+    }
+    /* Medium: pulses for ~5s then fades. Total 7s. */
+    @keyframes flame-medium-full {
+      0%   { box-shadow: 0 0 6px #ff4500, 0 0 12px #ff6a00, 0 0 18px #ff4500; }
+      10%  { box-shadow: 0 0 8px #ff0000, 0 0 18px #ff6a00, 0 0 28px #ff4500; }
+      20%  { box-shadow: 0 0 6px #ff4500, 0 0 12px #ff6a00, 0 0 18px #ff4500; }
+      30%  { box-shadow: 0 0 8px #ff0000, 0 0 18px #ff6a00, 0 0 28px #ff4500; }
+      40%  { box-shadow: 0 0 6px #ff4500, 0 0 12px #ff6a00, 0 0 18px #ff4500; }
       50%  { box-shadow: 0 0 8px #ff0000, 0 0 18px #ff6a00, 0 0 28px #ff4500; }
-      75%  { box-shadow: 0 0 6px #ff4500, 0 0 14px #ff0000, 0 0 20px #ff6a00; }
-      100% { box-shadow: 0 0 4px #ff4500, 0 0 8px #ff6a00, 0 0 12px #ff4500; }
+      60%  { box-shadow: 0 0 6px #ff4500, 0 0 12px #ff6a00, 0 0 18px #ff4500; }
+      71%  { box-shadow: 0 0 6px #ff4500, 0 0 12px #ff6a00, 0 0 18px #ff4500; }
+      100% { box-shadow: 0 0 0px transparent; }
     }
-    @keyframes flame-border-intense {
+    /* Intense: pulses for ~5s then fades. Total 7s. */
+    @keyframes flame-intense-full {
       0%   { box-shadow: 0 0 8px #ff0000, 0 0 16px #ff4500, 0 0 24px #ff0000, 0 0 32px #ff6a00; }
-      25%  { box-shadow: 0 0 12px #ff4500, 0 0 24px #ff0000, 0 0 36px #ff6a00, 0 0 48px #ff0000; }
-      50%  { box-shadow: 0 0 16px #ff0000, 0 0 32px #ff6a00, 0 0 48px #ff0000, 0 0 56px #ff4500; }
-      75%  { box-shadow: 0 0 12px #ff6a00, 0 0 24px #ff4500, 0 0 36px #ff0000, 0 0 48px #ff6a00; }
-      100% { box-shadow: 0 0 8px #ff0000, 0 0 16px #ff4500, 0 0 24px #ff0000, 0 0 32px #ff6a00; }
-    }
-    @keyframes flame-fadeout {
-      0%   { box-shadow: 0 0 4px #ff4500, 0 0 8px #ff6a00; }
+      8%   { box-shadow: 0 0 16px #ff0000, 0 0 32px #ff6a00, 0 0 48px #ff0000, 0 0 56px #ff4500; }
+      16%  { box-shadow: 0 0 8px #ff0000, 0 0 16px #ff4500, 0 0 24px #ff0000, 0 0 32px #ff6a00; }
+      24%  { box-shadow: 0 0 16px #ff0000, 0 0 32px #ff6a00, 0 0 48px #ff0000, 0 0 56px #ff4500; }
+      32%  { box-shadow: 0 0 8px #ff0000, 0 0 16px #ff4500, 0 0 24px #ff0000, 0 0 32px #ff6a00; }
+      40%  { box-shadow: 0 0 16px #ff0000, 0 0 32px #ff6a00, 0 0 48px #ff0000, 0 0 56px #ff4500; }
+      48%  { box-shadow: 0 0 8px #ff0000, 0 0 16px #ff4500, 0 0 24px #ff0000, 0 0 32px #ff6a00; }
+      56%  { box-shadow: 0 0 16px #ff0000, 0 0 32px #ff6a00, 0 0 48px #ff0000, 0 0 56px #ff4500; }
+      64%  { box-shadow: 0 0 8px #ff0000, 0 0 16px #ff4500, 0 0 24px #ff0000, 0 0 32px #ff6a00; }
+      71%  { box-shadow: 0 0 8px #ff0000, 0 0 16px #ff4500, 0 0 24px #ff0000, 0 0 32px #ff6a00; }
       100% { box-shadow: 0 0 0px transparent; }
     }
-    @keyframes flame-fadeout-intense {
-      0%   { box-shadow: 0 0 8px #ff0000, 0 0 16px #ff4500, 0 0 24px #ff0000; }
-      100% { box-shadow: 0 0 0px transparent; }
-    }
-    .flame-mild {
-      animation: flame-border 2s ease-in-out 2, flame-fadeout 1.5s ease-out 4s forwards;
-      border-color: #ff6a00 !important;
-    }
-    .flame-medium {
-      animation: flame-border 1.5s ease-in-out 3, flame-fadeout 1.5s ease-out 4.5s forwards;
-      border-color: #ff4500 !important;
-    }
-    .flame-intense {
-      animation: flame-border-intense 1s ease-in-out 4, flame-fadeout-intense 2s ease-out 4s forwards;
-      border-color: #ff0000 !important;
-    }
+    .flame-mild    { animation: flame-mild-full 7s ease-in-out forwards; border-color: #ff6a00 !important; }
+    .flame-medium  { animation: flame-medium-full 7s ease-in-out forwards; border-color: #ff4500 !important; }
+    .flame-intense { animation: flame-intense-full 7s ease-in-out forwards; border-color: #ff0000 !important; }
   `;
   document.head.appendChild(style);
 }
