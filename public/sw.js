@@ -1,4 +1,4 @@
-const CACHE_NAME = "bloom-v1";
+const CACHE_NAME = "bloom-v2";
 const SHELL = ["/", "/favicon.svg", "/icon-192x192.png", "/icon-512x512.png"];
 
 self.addEventListener("install", (event) => {
@@ -27,6 +27,9 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   const isSameOrigin = url.origin === self.location.origin;
+
+  // Never cache API calls
+  if (isSameOrigin && url.pathname.startsWith("/api/")) return;
 
   // Home / shell: serve cached shell if offline
   if (isSameOrigin && url.pathname === "/") {
