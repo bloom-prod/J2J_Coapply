@@ -6,70 +6,61 @@ import { generateRoasts, generateSingleRoast } from "@/lib/gemini";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const TZ = "America/New_York";
+
+/** Get the EST/EDT UTC offset in ms by comparing a known UTC time to its local representation. */
+function getEasternOffsetMs(refDate: Date): number {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "numeric", minute: "numeric", hour12: false,
+  }).formatToParts(refDate);
+  const g = (t: string) => parts.find((p) => p.type === t)?.value || "";
+  const localMs = new Date(
+    `${g("year")}-${g("month")}-${g("day")}T${String(parseInt(g("hour"))).padStart(2, "0")}:${g("minute")}:00Z`
+  ).getTime();
+  return localMs - refDate.getTime(); // negative for US Eastern (UTC-5 or UTC-4)
+}
+
 /**
- * Returns the local date string (YYYY-MM-DD) in the given timezone,
- * with a 6 AM cutoff (before 6 AM counts as the previous day).
- * Also returns the start-of-day timestamp for querying.
+ * Returns the effective "today" date (YYYY-MM-DD) in EST and the 6AM-to-6AM
+ * UTC time range for querying applications.
+ *
+ * Day runs from 6 AM EST to 6 AM EST the next day.
+ * If current time is before 6 AM EST, it counts as the previous day.
  */
-function effectiveToday(tz: string): { dateStr: string; dayStart: Date; dayEnd: Date } {
-  try {
-    const now = new Date();
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: tz,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "numeric",
-      hour12: false,
-    }).formatToParts(now);
+function effectiveToday(): { dateStr: string; dayStart: Date; dayEnd: Date } {
+  const now = new Date();
+  const offsetMs = getEasternOffsetMs(now);
 
-    const get = (t: string) => parts.find((p) => p.type === t)?.value || "";
-    const hour = parseInt(get("hour"), 10);
-    let dateStr = `${get("year")}-${get("month")}-${get("day")}`;
+  // Get current date & hour in Eastern time
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "numeric", hour12: false,
+  }).formatToParts(now);
+  const g = (t: string) => parts.find((p) => p.type === t)?.value || "";
+  const hour = parseInt(g("hour"), 10);
+  let dateStr = `${g("year")}-${g("month")}-${g("day")}`;
 
-    if (hour < 6) {
-      // Before 6 AM — roll back to yesterday
-      const d = new Date(dateStr + "T00:00:00");
-      d.setDate(d.getDate() - 1);
-      dateStr = d.toISOString().slice(0, 10);
-    }
-
-    // Compute day boundaries: 6 AM on dateStr to 6 AM the next day (in the user's tz)
-    // We approximate by computing the offset from UTC for this timezone
-    const refParts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: tz,
-      year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "numeric", minute: "numeric", hour12: false,
-    }).formatToParts(new Date(`${dateStr}T12:00:00Z`));
-    const refGet = (t: string) => refParts.find((p) => p.type === t)?.value || "";
-    const refLocalDate = `${refGet("year")}-${refGet("month")}-${refGet("day")}`;
-    const refLocalHour = parseInt(refGet("hour"), 10);
-    const refLocalMin = parseInt(refGet("minute"), 10);
-    // offset = local - UTC (in ms)
-    const refUTC = new Date(`${dateStr}T12:00:00Z`).getTime();
-    const refLocalMs = new Date(`${refLocalDate}T${String(refLocalHour).padStart(2, "0")}:${String(refLocalMin).padStart(2, "0")}:00Z`).getTime();
-    const offsetMs = refLocalMs - refUTC;
-
-    // dayStart = 6 AM local on dateStr = dateStr T06:00 local = dateStr T06:00 - offset in UTC
-    const dayStart = new Date(`${dateStr}T06:00:00Z`);
-    dayStart.setTime(dayStart.getTime() - offsetMs);
-
-    // dayEnd = 6 AM local the next day
-    const nextDay = new Date(dateStr + "T00:00:00");
-    nextDay.setDate(nextDay.getDate() + 1);
-    const nextDateStr = nextDay.toISOString().slice(0, 10);
-    const dayEnd = new Date(`${nextDateStr}T06:00:00Z`);
-    dayEnd.setTime(dayEnd.getTime() - offsetMs);
-
-    return { dateStr, dayStart, dayEnd };
-  } catch {
-    const dateStr = new Date().toISOString().slice(0, 10);
-    return {
-      dateStr,
-      dayStart: new Date(`${dateStr}T00:00:00Z`),
-      dayEnd: new Date(`${dateStr}T23:59:59Z`),
-    };
+  if (hour < 6) {
+    const d = new Date(dateStr + "T00:00:00");
+    d.setDate(d.getDate() - 1);
+    dateStr = d.toISOString().slice(0, 10);
   }
+
+  // 6 AM Eastern on dateStr → convert to UTC: 6AM_local_as_UTC - offset
+  // offset is (local - UTC), so UTC = local - offset → UTC = 06:00_as_UTC - offset
+  const dayStart = new Date(`${dateStr}T06:00:00Z`);
+  dayStart.setTime(dayStart.getTime() - offsetMs);
+
+  const nextDay = new Date(dateStr + "T00:00:00");
+  nextDay.setDate(nextDay.getDate() + 1);
+  const nextDateStr = nextDay.toISOString().slice(0, 10);
+  const dayEnd = new Date(`${nextDateStr}T06:00:00Z`);
+  dayEnd.setTime(dayEnd.getTime() - offsetMs);
+
+  return { dateStr, dayStart, dayEnd };
 }
 
 export interface ShameEntry {
@@ -84,10 +75,9 @@ export async function GET(req: Request) {
     await requireUser(req);
 
     const url = new URL(req.url);
-    const tz = url.searchParams.get("tz") || "America/New_York";
     const forceRegen = url.searchParams.get("force") === "1";
-    const { dateStr: today, dayStart, dayEnd } = effectiveToday(tz);
-    console.log("[shame] effectiveToday:", today, "| tz:", tz, "| force:", forceRegen);
+    const { dateStr: today, dayStart, dayEnd } = effectiveToday();
+    console.log("[shame] effectiveToday:", today, "| force:", forceRegen);
     console.log("[shame] dayStart:", dayStart.toISOString(), "| dayEnd:", dayEnd.toISOString());
 
     let appsSnap, profilesSnap;
