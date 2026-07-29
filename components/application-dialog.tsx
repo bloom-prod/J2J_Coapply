@@ -27,7 +27,7 @@ const EMPTY: Form = {
   company: "",
   role: "",
   roleCategory: "",
-  status: "Applied",
+  status: "Want to Apply",
   priority: "High",
   location: "",
   date: "",
@@ -207,7 +207,7 @@ export function ApplicationDialog({
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 pt-4 mt-1 border-t" style={{ borderColor: "var(--pink-100)" }}>
+        <div className="dialog-footer">
           {job && (
             <Button
               variant="outline"

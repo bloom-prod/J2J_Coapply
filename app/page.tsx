@@ -119,13 +119,13 @@ export default function Page() {
         <div className="topbar-right">
           <ThemeToggle />
           <Button variant="outline" size="sm" className="rounded-full" onClick={exportCSV}>
-            <i className="ti ti-download" /> Export CSV
+            <i className="ti ti-download" /><span className="hidden sm:inline">Export CSV</span>
           </Button>
           <Button variant="outline" size="sm" className="rounded-full" onClick={() => setProfileOpen(true)}>
-            <i className="ti ti-user" /> {bloom.user.displayName || bloom.user.email}
+            <i className="ti ti-user" /><span className="hidden sm:inline max-w-[120px] truncate">{bloom.user.displayName || bloom.user.email}</span>
           </Button>
           <Button variant="outline" size="sm" className="rounded-full" onClick={() => bloom.signOut()}>
-            <i className="ti ti-logout" /> Sign out
+            <i className="ti ti-logout" /><span className="hidden sm:inline">Sign out</span>
           </Button>
         </div>
       </div>

@@ -216,10 +216,8 @@ export function ImportDialog({
             </div>
 
             <div
+              className="table-wrap"
               style={{
-                border: "1px solid var(--border, rgba(0,0,0,0.08))",
-                borderRadius: 12,
-                overflow: "auto",
                 maxHeight: 420,
               }}
             >
@@ -301,7 +299,7 @@ export function ImportDialog({
             </div>
 
             <div
-              className="flex items-center gap-2.5 pt-4 mt-1 border-t"
+              className="dialog-footer"
               style={{ borderColor: "var(--pink-100)" }}
             >
               <Button

@@ -201,7 +201,7 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
           </div>
 
           <div className="comm-grid" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+            <div className="charts-row-3">
               <div className="chart-card">
                 <div className="it">Solved by user</div>
                 <div className="chart-wrap">

@@ -111,7 +111,7 @@
 .stat-card.sage .stat-num{color:var(--sage-600);}
 .stat-label{font-size:10px;color:var(--text-light);margin-top:5px;text-transform:uppercase;letter-spacing:.6px;}
 
-.sec-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.sec-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px;}
 .sec-title{font-size:14px;font-weight:600;color:var(--text-dark);}
 .filters{display:flex;gap:7px;margin-bottom:12px;flex-wrap:wrap;}
 .chip{padding:4px 13px;border-radius:20px;font-size:12px;cursor:pointer;border:1px solid var(--pink-200);color:var(--text-mid);background:var(--card-bg);transition:all .15s;user-select:none;}
@@ -290,6 +290,8 @@ table.bloom tr:hover td{background:var(--pink-50);}
   .stats-row{grid-template-columns:repeat(3,1fr);}
   .ig{grid-template-columns:1fr 1fr;}
   .ic.half{grid-column:1/-1;}
+  .resume-layout{grid-template-columns:200px 1fr 240px;}
+  .charts-row-3{grid-template-columns:repeat(2,1fr);}
 }
 /* ---- Job Board ---- */
 .job-share-form{background:var(--card-bg);border:1px solid var(--pink-100);border-radius:12px;padding:16px;margin-top:12px;}
@@ -365,6 +367,14 @@ table.bloom tr:hover td{background:var(--pink-50);}
 .interview-prep-textarea:focus{border-color:var(--pink-300);outline:none;}
 .interview-prep-form-row{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:16px;}
 .interview-prep-form-actions{display:flex;gap:8px;margin-top:16px;}
+
+/* ---- responsive layout helpers ---- */
+.resume-layout{display:grid;grid-template-columns:240px 1fr 290px;gap:0;height:calc(100vh - 130px);min-height:500px;background:var(--cream);}
+.charts-row-3,.charts-row-2,.two-col-stack{display:grid;gap:14px;}
+.charts-row-3{grid-template-columns:repeat(3,1fr);}
+.charts-row-2,.two-col-stack{grid-template-columns:repeat(2,1fr);}
+.interview-prep-layout{display:flex;gap:12px;align-items:flex-start;margin-top:16px;}
+.dialog-footer{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:16px;margin-top:4px;border-top:1px solid var(--pink-100);}
 .dark .interview-prep-form{border-color:var(--pink-100);}
 .dark .interview-prep-sidebar{border-color:var(--border);}
 .dark .interview-prep-post-card{border-color:var(--border);}
@@ -387,4 +397,11 @@ table.bloom tr:hover td{background:var(--pink-50);}
   .chart-wrap{height:220px;}
   .sec-header{flex-wrap:wrap;gap:10px;}
   .lb-table th,.lb-table td{padding:7px 6px;}
+  .frow,.job-share-form-grid{grid-template-columns:1fr;}
+  .charts-row-3,.charts-row-2,.two-col-stack{grid-template-columns:1fr;}
+  .interview-prep-layout{flex-direction:column;}
+  .interview-prep-sidebar{position:static;width:auto;max-height:200px;overflow-y:auto;}
+  .resume-layout{grid-template-columns:1fr;height:auto;min-height:auto;}
+  .dialog-footer{flex-direction:column;align-items:stretch;}
+  .dialog-footer button{width:100%;margin-left:0 !important;}
 }

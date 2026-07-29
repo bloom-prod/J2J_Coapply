@@ -244,7 +244,7 @@ export function InsightsTab({ jobs, onEdit }: { jobs: Job[]; onEdit: (j: Job) =>
           : noData}
       </div>
 
-      <div style={{ gridColumn: "1/-1", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      <div className="two-col-stack" style={{ gridColumn: "1/-1" }}>
         <div className="ic">
           <div className="it">Weekly application volume</div>
           {data.weeks.some((w) => w.count > 0) ? (

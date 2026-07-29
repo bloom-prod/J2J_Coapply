@@ -167,13 +167,13 @@ export function DiscoverTab({
       <div className="sec-header" style={{ marginTop: 10, marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <Input
-            className="h-9 w-[240px] rounded-full"
+            className="h-9 w-full sm:w-[240px] rounded-full"
             placeholder="Search companies or roles..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as "popular" | "alpha")}>
-            <SelectTrigger className="h-9 w-[150px] rounded-full">
+            <SelectTrigger className="h-9 w-full sm:w-[150px] rounded-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
