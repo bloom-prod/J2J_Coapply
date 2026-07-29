@@ -87,15 +87,24 @@ export async function GET(req: Request) {
     const tz = url.searchParams.get("tz") || "America/New_York";
     const forceRegen = url.searchParams.get("force") === "1";
     const { dateStr: today, dayStart, dayEnd } = effectiveToday(tz);
+    console.log("[shame] effectiveToday:", today, "| tz:", tz, "| force:", forceRegen);
+    console.log("[shame] dayStart:", dayStart.toISOString(), "| dayEnd:", dayEnd.toISOString());
 
-    const [appsSnap, profilesSnap] = await Promise.all([
-      adminDb
-        .collection("applications")
-        .where("createdAt", ">=", dayStart)
-        .where("createdAt", "<", dayEnd)
-        .get(),
-      adminDb.collection("userProfiles").get(),
-    ]);
+    let appsSnap, profilesSnap;
+    try {
+      [appsSnap, profilesSnap] = await Promise.all([
+        adminDb
+          .collection("applications")
+          .where("createdAt", ">=", dayStart)
+          .where("createdAt", "<", dayEnd)
+          .get(),
+        adminDb.collection("userProfiles").get(),
+      ]);
+      console.log("[shame] Firestore query OK — apps:", appsSnap.size, "| profiles:", profilesSnap.size);
+    } catch (dbErr) {
+      console.error("[shame] Firestore query FAILED:", dbErr);
+      throw dbErr;
+    }
 
     // Count applications per user for today
     const countsByUid: Record<string, number> = {};
@@ -103,6 +112,7 @@ export async function GET(req: Request) {
       const uid = doc.data().ownerUid as string;
       if (uid) countsByUid[uid] = (countsByUid[uid] || 0) + 1;
     });
+    console.log("[shame] countsByUid:", JSON.stringify(countsByUid));
 
     // Build user list from profiles
     const users: { uid: string; name: string }[] = [];
@@ -110,49 +120,58 @@ export async function GET(req: Request) {
       const data = doc.data();
       users.push({ uid: doc.id, name: (data.name as string) || "Someone" });
     });
+    console.log("[shame] users:", users.map((u) => `${u.name} (${u.uid})`).join(", "));
 
     // Check Firestore cache for today's roasts
     const cacheRef = adminDb.collection("dailyRoasts").doc(today);
     const cacheDoc = await cacheRef.get();
     const cached = cacheDoc.exists ? (cacheDoc.data() as Record<string, string>) : null;
+    console.log("[shame] cache exists:", !!cached, "| forceRegen:", forceRegen);
 
     // Parse cached per-user counts for milestone detection
     const cachedCountMap: Record<string, number> = {};
     if (cached?._countMap) {
       try { Object.assign(cachedCountMap, JSON.parse(cached._countMap)); } catch { /* ignore */ }
     }
+    console.log("[shame] cachedCountMap:", JSON.stringify(cachedCountMap));
 
     const MILESTONES = [5, 10];
 
     let roastMap: Record<string, string>;
     if (!cached || forceRegen) {
-      // No cache or force refresh — generate fresh roasts for everyone
+      console.log("[shame] Generating fresh roasts for all users...");
       const userApps = users.map((u) => ({
         name: u.name,
         appsToday: countsByUid[u.uid] || 0,
       }));
       roastMap = await generateRoasts(userApps);
+      console.log("[shame] Generated roasts for:", Object.keys(roastMap).join(", "));
     } else {
-      // Use cached roasts, but regenerate for users who crossed a milestone
       roastMap = { ...cached };
 
       for (const u of users) {
         const count = countsByUid[u.uid] || 0;
         const prev = cachedCountMap[u.uid] || 0;
-        // Check if user crossed any milestone since last cache
         const crossedMilestone = MILESTONES.some((m) => count >= m && prev < m);
         if (crossedMilestone) {
+          console.log(`[shame] Milestone crossed for ${u.name}: ${prev} -> ${count}`);
           const newRoast = await generateSingleRoast(u.name, count);
           roastMap[u.name] = newRoast;
         }
       }
+      console.log("[shame] Using cached roasts");
     }
 
     // Always update cache with current counts
     const countMap = JSON.stringify(
       Object.fromEntries(users.map((u) => [u.uid, countsByUid[u.uid] || 0]))
     );
-    await cacheRef.set({ ...roastMap, _countMap: countMap });
+    try {
+      await cacheRef.set({ ...roastMap, _countMap: countMap });
+      console.log("[shame] Cache updated");
+    } catch (cacheErr) {
+      console.error("[shame] Cache write FAILED:", cacheErr);
+    }
 
     const entries: ShameEntry[] = users.map((u) => {
       const appsToday = countsByUid[u.uid] || 0;
@@ -164,8 +183,10 @@ export async function GET(req: Request) {
 
     const totalAppsToday = entries.reduce((s, e) => s + e.appsToday, 0);
 
+    console.log("[shame] Returning", entries.length, "entries | totalAppsToday:", totalAppsToday);
     return NextResponse.json({ ok: true, date: today, totalAppsToday, entries });
   } catch (err) {
+    console.error("[shame] ROUTE ERROR:", err);
     const status = err instanceof HttpError ? err.statusCode : 500;
     return NextResponse.json(
       { ok: false, error: err instanceof Error ? err.message : "Server error" },
