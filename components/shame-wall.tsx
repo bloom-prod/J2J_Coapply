@@ -256,12 +256,18 @@ export function ShamePopup() {
 
   useEffect(() => {
     if (data.loading || !data.date) return;
+    const lastSeen = localStorage.getItem(SHAME_SEEN_KEY);
+    if (lastSeen) {
+      const elapsed = Date.now() - parseInt(lastSeen, 10);
+      const fourHours = 4 * 60 * 60 * 1000;
+      if (elapsed < fourHours) return;
+    }
     setOpen(true);
   }, [data.loading, data.date]);
 
   function handleClose(val: boolean) {
-    if (!val && data.date) {
-      localStorage.setItem(SHAME_SEEN_KEY, data.date);
+    if (!val) {
+      localStorage.setItem(SHAME_SEEN_KEY, String(Date.now()));
     }
     setOpen(val);
   }
