@@ -19,6 +19,8 @@ function ensureFlameStyles() {
     @media (max-width: 640px) {
       .shame-popup-dialog { max-width: 95vw !important; margin: 8px !important; }
       .shame-popup-dialog .shame-roast-card { padding: 6px 8px !important; }
+      .shame-popup-dialog [style*="padding: 20px 22px"] { padding: 14px 16px 6px !important; }
+      .shame-popup-dialog [style*="padding: 0 22px"] { padding: 0 16px 14px !important; }
     }
     @keyframes flame-border {
       0%   { box-shadow: 0 0 4px #ff4500, 0 0 8px #ff6a00, 0 0 12px #ff4500; }
@@ -34,9 +36,26 @@ function ensureFlameStyles() {
       75%  { box-shadow: 0 0 12px #ff6a00, 0 0 24px #ff4500, 0 0 36px #ff0000, 0 0 48px #ff6a00; }
       100% { box-shadow: 0 0 8px #ff0000, 0 0 16px #ff4500, 0 0 24px #ff0000, 0 0 32px #ff6a00; }
     }
-    .flame-mild    { animation: flame-border 2s ease-in-out infinite; border-color: #ff6a00 !important; }
-    .flame-medium  { animation: flame-border 1.5s ease-in-out infinite; border-color: #ff4500 !important; }
-    .flame-intense { animation: flame-border-intense 1s ease-in-out infinite; border-color: #ff0000 !important; }
+    @keyframes flame-fadeout {
+      0%   { box-shadow: 0 0 4px #ff4500, 0 0 8px #ff6a00; }
+      100% { box-shadow: 0 0 0px transparent; }
+    }
+    @keyframes flame-fadeout-intense {
+      0%   { box-shadow: 0 0 8px #ff0000, 0 0 16px #ff4500, 0 0 24px #ff0000; }
+      100% { box-shadow: 0 0 0px transparent; }
+    }
+    .flame-mild {
+      animation: flame-border 2s ease-in-out 2, flame-fadeout 1.5s ease-out 4s forwards;
+      border-color: #ff6a00 !important;
+    }
+    .flame-medium {
+      animation: flame-border 1.5s ease-in-out 3, flame-fadeout 1.5s ease-out 4.5s forwards;
+      border-color: #ff4500 !important;
+    }
+    .flame-intense {
+      animation: flame-border-intense 1s ease-in-out 4, flame-fadeout-intense 2s ease-out 4s forwards;
+      border-color: #ff0000 !important;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -233,13 +252,6 @@ export function useShameData() {
 
   useEffect(() => { fetchRoasts(false); }, [fetchRoasts]);
 
-  // Re-fetch when user returns to the tab (e.g. after adding apps)
-  useEffect(() => {
-    function onFocus() { fetchRoasts(false); }
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [fetchRoasts]);
-
   const forceRefresh = useCallback(() => fetchRoasts(true), [fetchRoasts]);
   const softRefresh = useCallback(() => fetchRoasts(false), [fetchRoasts]);
 
@@ -311,31 +323,35 @@ export function ShameWall() {
   );
 }
 
+// Check if popup should show (pure localStorage check, no React state involved)
+function shouldShowPopup(): boolean {
+  try {
+    const lastSeen = localStorage.getItem(SHAME_SEEN_KEY);
+    if (!lastSeen) return true;
+    const elapsed = Date.now() - parseInt(lastSeen, 10);
+    return elapsed >= 4 * 60 * 60 * 1000; // 4 hours
+  } catch {
+    return false;
+  }
+}
+
 // Popup dialog that shows every 4 hours
 export function ShamePopup() {
-  const [open, setOpen] = useState(false);
-  const [checked, setChecked] = useState(false);
+  // Decide on mount whether to show — never re-evaluate
+  const [open, setOpen] = useState(() => shouldShowPopup());
   const data = useShameData();
 
   useEffect(() => { ensureFlameStyles(); }, []);
 
+  // Stamp localStorage immediately when popup opens
   useEffect(() => {
-    if (checked || data.loading || !data.date) return;
-    setChecked(true); // only check once per mount
-    const lastSeen = localStorage.getItem(SHAME_SEEN_KEY);
-    if (lastSeen) {
-      const elapsed = Date.now() - parseInt(lastSeen, 10);
-      const fourHours = 4 * 60 * 60 * 1000;
-      if (elapsed < fourHours) return;
-    }
-    setOpen(true);
-  }, [data.loading, data.date, checked]);
-
-  function handleClose(val: boolean) {
-    if (!val) {
+    if (open) {
       localStorage.setItem(SHAME_SEEN_KEY, String(Date.now()));
     }
-    setOpen(val);
+  }, [open]);
+
+  function handleClose() {
+    setOpen(false);
   }
 
   // Get the logged-in user's app count for flame intensity
@@ -345,7 +361,7 @@ export function ShamePopup() {
   const popupFlame = getFlameClass(myApps);
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
       <DialogContent
         className={`shame-popup-dialog ${popupFlame}`}
         style={{ maxWidth: 700, maxHeight: "90vh", overflowY: "auto", padding: 0, borderRadius: 12 }}
