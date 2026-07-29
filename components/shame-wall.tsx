@@ -8,6 +8,47 @@ import type { ShameEntry } from "@/app/api/shame/route";
 const SHAME_SEEN_KEY = "bloom_shame_seen_date";
 const SHAME_COLLAPSED_KEY = "bloom_shame_collapsed";
 
+// Inject flame animation styles once
+const FLAME_STYLE_ID = "shame-flame-styles";
+function ensureFlameStyles() {
+  if (typeof document === "undefined") return;
+  if (document.getElementById(FLAME_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = FLAME_STYLE_ID;
+  style.textContent = `
+    @media (max-width: 640px) {
+      .shame-popup-dialog { max-width: 95vw !important; margin: 8px !important; }
+      .shame-popup-dialog .shame-roast-card { padding: 6px 8px !important; }
+    }
+    @keyframes flame-border {
+      0%   { box-shadow: 0 0 4px #ff4500, 0 0 8px #ff6a00, 0 0 12px #ff4500; }
+      25%  { box-shadow: 0 0 6px #ff6a00, 0 0 14px #ff4500, 0 0 20px #ff0000; }
+      50%  { box-shadow: 0 0 8px #ff0000, 0 0 18px #ff6a00, 0 0 28px #ff4500; }
+      75%  { box-shadow: 0 0 6px #ff4500, 0 0 14px #ff0000, 0 0 20px #ff6a00; }
+      100% { box-shadow: 0 0 4px #ff4500, 0 0 8px #ff6a00, 0 0 12px #ff4500; }
+    }
+    @keyframes flame-border-intense {
+      0%   { box-shadow: 0 0 8px #ff0000, 0 0 16px #ff4500, 0 0 24px #ff0000, 0 0 32px #ff6a00; }
+      25%  { box-shadow: 0 0 12px #ff4500, 0 0 24px #ff0000, 0 0 36px #ff6a00, 0 0 48px #ff0000; }
+      50%  { box-shadow: 0 0 16px #ff0000, 0 0 32px #ff6a00, 0 0 48px #ff0000, 0 0 56px #ff4500; }
+      75%  { box-shadow: 0 0 12px #ff6a00, 0 0 24px #ff4500, 0 0 36px #ff0000, 0 0 48px #ff6a00; }
+      100% { box-shadow: 0 0 8px #ff0000, 0 0 16px #ff4500, 0 0 24px #ff0000, 0 0 32px #ff6a00; }
+    }
+    .flame-mild    { animation: flame-border 2s ease-in-out infinite; border-color: #ff6a00 !important; }
+    .flame-medium  { animation: flame-border 1.5s ease-in-out infinite; border-color: #ff4500 !important; }
+    .flame-intense { animation: flame-border-intense 1s ease-in-out infinite; border-color: #ff0000 !important; }
+  `;
+  document.head.appendChild(style);
+}
+
+/** Returns a flame CSS class based on how few apps someone did. Fewer = more fire. */
+function getFlameClass(appsToday: number): string {
+  if (appsToday === 0) return "flame-intense";
+  if (appsToday <= 2) return "flame-medium";
+  if (appsToday <= 4) return "flame-mild";
+  return "";
+}
+
 function getIcon(appsToday: number) {
   if (appsToday === 0) return "\uD83D\uDCA9";
   if (appsToday >= 5) return "\uD83D\uDD25";
@@ -17,16 +58,19 @@ function getIcon(appsToday: number) {
 
 function RoastCard({ entry, isMe }: { entry: ShameEntry; isMe: boolean }) {
   const isZero = entry.appsToday === 0;
+  const flameClass = isMe ? getFlameClass(entry.appsToday) : "";
   return (
-    <div style={{
-      padding: "8px 12px",
-      borderRadius: 8,
-      border: isMe ? "2px solid var(--accent)" : "1px solid var(--border)",
-      background: isZero ? "rgba(220, 50, 50, 0.04)" : "transparent",
-      display: "flex",
-      gap: 10,
-      alignItems: "flex-start",
-    }}>
+    <div
+      className={flameClass}
+      style={{
+        padding: "8px 12px",
+        borderRadius: 8,
+        border: isMe ? "2px solid var(--accent)" : "1px solid var(--border)",
+        background: isZero ? "rgba(220, 50, 50, 0.04)" : "transparent",
+        display: "flex",
+        gap: 10,
+        alignItems: "flex-start",
+      }}>
       <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0, marginTop: 2 }}>
         {getIcon(entry.appsToday)}
       </span>
@@ -204,6 +248,7 @@ export function useShameData() {
 
 // Collapsible embedded card for the Community tab
 export function ShameWall() {
+  useEffect(() => { ensureFlameStyles(); }, []);
   const data = useShameData();
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -272,6 +317,8 @@ export function ShamePopup() {
   const [checked, setChecked] = useState(false);
   const data = useShameData();
 
+  useEffect(() => { ensureFlameStyles(); }, []);
+
   useEffect(() => {
     if (checked || data.loading || !data.date) return;
     setChecked(true); // only check once per mount
@@ -291,9 +338,18 @@ export function ShamePopup() {
     setOpen(val);
   }
 
+  // Get the logged-in user's app count for flame intensity
+  const myUid = auth.currentUser?.uid;
+  const myEntry = data.entries.find((e) => e.uid === myUid);
+  const myApps = myEntry?.appsToday ?? 0;
+  const popupFlame = getFlameClass(myApps);
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent style={{ maxWidth: 700, maxHeight: "90vh", overflowY: "auto", padding: 0 }}>
+      <DialogContent
+        className={`shame-popup-dialog ${popupFlame}`}
+        style={{ maxWidth: 700, maxHeight: "90vh", overflowY: "auto", padding: 0, borderRadius: 12 }}
+      >
         <div style={{ padding: "20px 22px 8px" }}>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>
             Daily Shame Wall

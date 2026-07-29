@@ -124,20 +124,20 @@ async function callGroq(systemPrompt, userPrompt) {
 }
 
 async function generateEmailContent(name, appsYesterday, companiesApplied) {
-  const systemPrompt = `You are a warm, supportive career coach writing a brief morning email to a job hunter. Be genuine, encouraging, and specific.
+  const systemPrompt = `You are the most ruthless, no-mercy roast master writing a daily morning email to a job hunter in an accountability group. Your job is to shame them into action. Be brutal, funny, and personal.
 
 Format your response as JSON with these fields:
-- "subject": a short, motivating email subject line (no emojis)
-- "note": 2-3 sentences of genuine support and encouragement based on their yesterday's count
+- "subject": a short, savage email subject line that will make them feel guilty when they see it in their inbox (no emojis)
+- "note": 2-3 sentences of brutal roasting based on their yesterday's count. If 0 apps: absolutely destroy them. If 1-3: mock them for barely trying. If 4-9: backhanded compliment. If 10+: props but remind them not to slack today. Make it sting. End with a command to get to work.
 - "jobs": an array of exactly 5 objects, each with "company", "role", and "url" fields. Suggest real, well-known companies they haven't applied to yet. Use real career page URLs (e.g. https://careers.google.com, https://www.amazon.jobs, https://careers.microsoft.com, https://jobs.netflix.com, https://www.metacareers.com, https://jobs.apple.com, https://careers.walmart.com, https://www.salesforce.com/company/careers, https://careers.adobe.com, https://www.nvidia.com/en-us/about-nvidia/careers). Pick varied companies and roles for tech job seekers.
 
 Respond ONLY with valid JSON, no markdown fences.`;
 
   const appliedList = companiesApplied.length > 0
     ? `They already applied to: ${companiesApplied.join(", ")}.`
-    : "They haven't applied anywhere yet.";
+    : "They haven't applied anywhere yet — not a single one.";
 
-  const userPrompt = `${name} submitted ${appsYesterday} job application${appsYesterday !== 1 ? "s" : ""} yesterday. ${appliedList} Suggest companies they have NOT applied to.`;
+  const userPrompt = `${name} submitted ${appsYesterday} job application${appsYesterday !== 1 ? "s" : ""} yesterday. ${appliedList} Roast them and suggest companies they have NOT applied to.`;
 
   const raw = await callGroq(systemPrompt, userPrompt);
   if (!raw) return null;
@@ -154,10 +154,12 @@ Respond ONLY with valid JSON, no markdown fences.`;
 // ── Fallback content ────────────────────────────────────────────────────
 function buildFallbackContent(name, appsYesterday) {
   return {
-    subject: `Your daily update: ${appsYesterday} app${appsYesterday !== 1 ? "s" : ""} yesterday`,
+    subject: appsYesterday === 0
+      ? `${name}, zero apps yesterday. Seriously?`
+      : `${name}, only ${appsYesterday} app${appsYesterday !== 1 ? "s" : ""}? Step it up.`,
     note: appsYesterday === 0
-      ? `Today is a fresh start, ${name}. Every application is a step closer. Let's make today count!`
-      : `Great effort yesterday with ${appsYesterday} application${appsYesterday !== 1 ? "s" : ""}, ${name}! Keep that momentum going today.`,
+      ? `${name}, you submitted exactly zero applications yesterday. Your couch called — it wants its best friend back. Get off your butt and start applying NOW.`
+      : `${name}, ${appsYesterday} application${appsYesterday !== 1 ? "s" : ""}? That's it? The job market isn't going to beg you to join. Open your laptop and get to work.`,
     jobs: [
       { company: "Google", role: "Software Engineer", url: "https://careers.google.com" },
       { company: "Microsoft", role: "Software Engineer", url: "https://careers.microsoft.com" },
@@ -205,7 +207,7 @@ function buildEmailHtml(name, appsYesterday, note, jobs) {
   </table>
 
   <p style="color:#999;font-size:12px;margin-top:32px;text-align:center;">
-    Sent with love from Bloom Tracker at <a href="https://j2j.pxndey.com" style="color:#2563eb;">j2j.pxndey.com</a>
+    Stop reading this footer and go apply. <a href="https://j2j.pxndey.com" style="color:#2563eb;">j2j.pxndey.com</a>
   </p>
 </body>
 </html>`;
