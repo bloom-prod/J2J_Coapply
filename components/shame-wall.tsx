@@ -141,8 +141,9 @@ export function useShameData() {
       if (!token) return;
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const forceParam = force ? "&force=1" : "";
-      const res = await fetch(`/api/shame?tz=${encodeURIComponent(tz)}${forceParam}`, {
+      const res = await fetch(`/api/shame?tz=${encodeURIComponent(tz)}${forceParam}&_t=${Date.now()}`, {
         headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
       });
       const d = await res.json();
       if (d.ok) {
@@ -160,6 +161,13 @@ export function useShameData() {
   }, []);
 
   useEffect(() => { fetchRoasts(false); }, [fetchRoasts]);
+
+  // Re-fetch when user returns to the tab (e.g. after adding apps)
+  useEffect(() => {
+    function onFocus() { fetchRoasts(false); }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [fetchRoasts]);
 
   const forceRefresh = useCallback(() => fetchRoasts(true), [fetchRoasts]);
   const softRefresh = useCallback(() => fetchRoasts(false), [fetchRoasts]);
