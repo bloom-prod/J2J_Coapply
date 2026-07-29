@@ -165,9 +165,9 @@ export function TrackerTab({
       <div className="sec-header">
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <span className="sec-title">Applications</span>
-          <Input className="h-9 w-[190px] rounded-full" placeholder="Search..." value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input className="h-9 w-full sm:w-[190px] rounded-full" placeholder="Search..." value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {selectedIds.size > 0 && (
             <Button
               className="rounded-full mass-share-btn"
@@ -176,14 +176,15 @@ export function TrackerTab({
               disabled={massSharing}
             >
               <i className={massSharing ? "ti ti-loader-2" : "ti ti-share"} />
-              {massSharing ? "Sharing..." : `Share Selected (${selectedIds.size})`}
+              <span className="hidden sm:inline">{massSharing ? "Sharing..." : "Share Selected"}</span>
+              <span className="sm:hidden">({selectedIds.size})</span>
             </Button>
           )}
           <Button className="rounded-full" onClick={onAdd}>
-            <i className="ti ti-plus" /> Add application
+            <i className="ti ti-plus" /> <span className="hidden sm:inline">Add application</span>
           </Button>
           <Button variant="outline" className="rounded-full" onClick={onImport}>
-            <i className="ti ti-upload" /> Import
+            <i className="ti ti-upload" /> <span className="hidden sm:inline">Import</span>
           </Button>
         </div>
       </div>

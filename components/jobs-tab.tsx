@@ -122,7 +122,7 @@ export function JobsTab({ posts, myJobs, onShare, onDelete, onRefresh, onSaveToT
     <div>
       <div className="sec-header" style={{ marginBottom: 6 }}>
         <span className="sec-title">💼 Job Board</span>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Button variant="outline" size="sm" className="rounded-full" onClick={handleRefresh} disabled={refreshing}>
             <i className="ti ti-refresh" /> {refreshing ? "Refreshing…" : "Refresh"}
           </Button>
@@ -133,7 +133,7 @@ export function JobsTab({ posts, myJobs, onShare, onDelete, onRefresh, onSaveToT
             onClick={() => setHideApplied((v) => !v)}
             title="Hide companies you've already applied to"
           >
-            <i className="ti ti-filter" /> Hide Applied
+            <i className="ti ti-filter" />{hideApplied ? "Shown" : "Hide Applied"}
           </Button>
           <Button variant="outline" size="sm" className="rounded-full" onClick={() => setShowForm((v) => !v)}>
             <i className="ti ti-plus" /> Share a Job

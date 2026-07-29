@@ -164,7 +164,7 @@ export function ResumeTab({
   }, {});
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "240px 1fr 290px", height: "calc(100vh - 130px)", minHeight: 500, background: "var(--cream)" }}>
+    <div className="resume-layout">
 
       {/* ── LEFT: resume list ── */}
       <div style={{ borderRight: "1px solid var(--pink-100)", display: "flex", flexDirection: "column", background: "var(--card-bg)" }}>

@@ -241,14 +241,14 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
 
       <div className="comm-grid" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {/* Row 1: three equal charts */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+        <div className="charts-row-3">
           <div className="chart-card"><div className="it">Status mix (everyone)</div><div className="chart-wrap"><Donut data={charts.status} colors={STATUS_COLORS} dark={dark} /></div></div>
           <div className="chart-card"><div className="it">Interview funnel</div><div className="chart-wrap"><VBar data={charts.funnel} fill={dark ? "#78AEDE" : "#185FA5"} dark={dark} /></div></div>
           <div className="chart-card"><div className="it">Most-applied companies</div><div className="chart-wrap"><HBar data={charts.companies} fill={dark ? "#E07BA0" : "#F2AECF"} dark={dark} /></div></div>
         </div>
 
         {/* Row 2: two equal charts */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <div className="charts-row-2">
           <div className="chart-card">
             <div className="it">Applications by role category</div>
             <div className="chart-wrap">
@@ -286,12 +286,12 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
           </div>
         </div>
 
-        <div className="feed-card">
+        <div className="feed-card overflow-x-auto">
           <div className="it">🏆 Leaderboard — top gardeners</div>
           {leaderboard.length === 0 ? (
             <div className="lb-empty">No gardeners yet — applications will rank here 🌱</div>
           ) : (
-            <table className="lb-table">
+            <table className="lb-table" style={{ minWidth: 480 }}>
               <thead>
                 <tr>
                   <th className="lb-rank">#</th>

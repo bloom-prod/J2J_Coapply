@@ -112,7 +112,7 @@ export function InterviewPrepTab({
     <div>
       <div className="sec-header" style={{ marginBottom: 6 }}>
         <span className="sec-title">🎤 Interview Prep</span>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Button
             variant="outline"
             size="sm"
@@ -200,9 +200,9 @@ export function InterviewPrepTab({
         </form>
       )}
 
-      <div style={{ display: "flex", gap: 12, marginTop: 16 }}>
+      <div className="interview-prep-layout">
         {/* Company Filter */}
-        <div className="interview-prep-sidebar">
+        <div className="interview-prep-sidebar" style={{ width: "100%" }}>
           <div className="interview-prep-sidebar-title">Companies</div>
           <Input
             placeholder="Search..."
