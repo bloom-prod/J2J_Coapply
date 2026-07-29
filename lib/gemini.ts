@@ -23,16 +23,6 @@ function getProviders(): LLMProvider[] {
     });
   }
 
-  const ghToken = process.env.GITHUB_API_MODEL || "";
-  if (ghToken) {
-    providers.push({
-      name: "GitHub Models",
-      endpoint: "https://models.inference.ai.azure.com/chat/completions",
-      model: "gpt-4o-mini",
-      token: ghToken,
-    });
-  }
-
   return providers;
 }
 

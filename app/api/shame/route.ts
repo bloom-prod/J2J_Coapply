@@ -7,33 +7,68 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Returns today's date as YYYY-MM-DD.
- * Applications store their date using `new Date().toISOString().slice(0,10)` (UTC).
- * To stay consistent, we also use UTC here.
- * If it's before 2 AM in the user's timezone, roll back to yesterday (UTC)
- * since people apply late at night.
+ * Returns the local date string (YYYY-MM-DD) in the given timezone,
+ * with a 6 AM cutoff (before 6 AM counts as the previous day).
+ * Also returns the start-of-day timestamp for querying.
  */
-function effectiveToday(tz: string): string {
+function effectiveToday(tz: string): { dateStr: string; dayStart: Date; dayEnd: Date } {
   try {
     const now = new Date();
-    // Check the hour in the user's timezone for the 2AM cutoff
     const parts = new Intl.DateTimeFormat("en-CA", {
       timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
       hour: "numeric",
       hour12: false,
     }).formatToParts(now);
-    const hour = parseInt(parts.find((p) => p.type === "hour")?.value || "12", 10);
+
+    const get = (t: string) => parts.find((p) => p.type === t)?.value || "";
+    const hour = parseInt(get("hour"), 10);
+    let dateStr = `${get("year")}-${get("month")}-${get("day")}`;
 
     if (hour < 6) {
-      // Before 6 AM local time — roll back one day from UTC date
-      const d = new Date(now);
-      d.setUTCDate(d.getUTCDate() - 1);
-      return d.toISOString().slice(0, 10);
+      // Before 6 AM — roll back to yesterday
+      const d = new Date(dateStr + "T00:00:00");
+      d.setDate(d.getDate() - 1);
+      dateStr = d.toISOString().slice(0, 10);
     }
-    // Use UTC date to match how applications store their date field
-    return now.toISOString().slice(0, 10);
+
+    // Compute day boundaries: 6 AM on dateStr to 6 AM the next day (in the user's tz)
+    // We approximate by computing the offset from UTC for this timezone
+    const refParts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: tz,
+      year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "numeric", minute: "numeric", hour12: false,
+    }).formatToParts(new Date(`${dateStr}T12:00:00Z`));
+    const refGet = (t: string) => refParts.find((p) => p.type === t)?.value || "";
+    const refLocalDate = `${refGet("year")}-${refGet("month")}-${refGet("day")}`;
+    const refLocalHour = parseInt(refGet("hour"), 10);
+    const refLocalMin = parseInt(refGet("minute"), 10);
+    // offset = local - UTC (in ms)
+    const refUTC = new Date(`${dateStr}T12:00:00Z`).getTime();
+    const refLocalMs = new Date(`${refLocalDate}T${String(refLocalHour).padStart(2, "0")}:${String(refLocalMin).padStart(2, "0")}:00Z`).getTime();
+    const offsetMs = refLocalMs - refUTC;
+
+    // dayStart = 6 AM local on dateStr = dateStr T06:00 local = dateStr T06:00 - offset in UTC
+    const dayStart = new Date(`${dateStr}T06:00:00Z`);
+    dayStart.setTime(dayStart.getTime() - offsetMs);
+
+    // dayEnd = 6 AM local the next day
+    const nextDay = new Date(dateStr + "T00:00:00");
+    nextDay.setDate(nextDay.getDate() + 1);
+    const nextDateStr = nextDay.toISOString().slice(0, 10);
+    const dayEnd = new Date(`${nextDateStr}T06:00:00Z`);
+    dayEnd.setTime(dayEnd.getTime() - offsetMs);
+
+    return { dateStr, dayStart, dayEnd };
   } catch {
-    return new Date().toISOString().slice(0, 10);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    return {
+      dateStr,
+      dayStart: new Date(`${dateStr}T00:00:00Z`),
+      dayEnd: new Date(`${dateStr}T23:59:59Z`),
+    };
   }
 }
 
@@ -51,10 +86,14 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const tz = url.searchParams.get("tz") || "America/New_York";
     const forceRegen = url.searchParams.get("force") === "1";
-    const today = effectiveToday(tz);
+    const { dateStr: today, dayStart, dayEnd } = effectiveToday(tz);
 
     const [appsSnap, profilesSnap] = await Promise.all([
-      adminDb.collection("applications").where("date", "==", today).get(),
+      adminDb
+        .collection("applications")
+        .where("createdAt", ">=", dayStart)
+        .where("createdAt", "<", dayEnd)
+        .get(),
       adminDb.collection("userProfiles").get(),
     ]);
 
