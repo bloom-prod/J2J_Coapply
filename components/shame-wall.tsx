@@ -67,8 +67,10 @@ function ShameContent({ entries, totalAppsToday, date, loading, error, onRefresh
   onRefresh: () => void;
 }) {
   const myUid = auth.currentUser?.uid;
+  const hasData = entries.length > 0;
 
-  if (loading) {
+  // Only show full spinner on initial load (no data yet)
+  if (loading && !hasData) {
     return (
       <div style={{ textAlign: "center", padding: 24 }}>
         <div className="spinner" />
@@ -77,7 +79,7 @@ function ShameContent({ entries, totalAppsToday, date, loading, error, onRefresh
     );
   }
 
-  if (error) {
+  if (error && !hasData) {
     return (
       <div style={{ textAlign: "center", padding: 20, color: "var(--text-mid)", fontSize: 13 }}>
         {error}
@@ -86,7 +88,20 @@ function ShameContent({ entries, totalAppsToday, date, loading, error, onRefresh
   }
 
   return (
-    <div>
+    <div style={{ position: "relative" }}>
+      {/* Loading overlay when refreshing with existing data */}
+      {loading && hasData && (
+        <div style={{
+          position: "absolute", inset: 0, background: "rgba(255,255,255,0.7)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 10, borderRadius: 8,
+        }}>
+          <div style={{ textAlign: "center" }}>
+            <div className="spinner" />
+            <div style={{ fontSize: 12, color: "var(--text-mid)", marginTop: 8 }}>Regenerating roasts...</div>
+          </div>
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{
@@ -108,9 +123,11 @@ function ShameContent({ entries, totalAppsToday, date, loading, error, onRefresh
               onRefresh();
             }
           }}
+          disabled={loading}
           style={{
             background: "none", border: "1px solid var(--border)", borderRadius: 6,
-            padding: "3px 8px", fontSize: 11, cursor: "pointer", color: "var(--text-mid)",
+            padding: "3px 8px", fontSize: 11, cursor: loading ? "not-allowed" : "pointer",
+            color: "var(--text-mid)", opacity: loading ? 0.5 : 1,
           }}
         >
           <i className="ti ti-refresh" style={{ fontSize: 12 }} />
@@ -249,13 +266,15 @@ export function ShameWall() {
   );
 }
 
-// Popup dialog that shows once per day on first login
+// Popup dialog that shows every 4 hours
 export function ShamePopup() {
   const [open, setOpen] = useState(false);
+  const [checked, setChecked] = useState(false);
   const data = useShameData();
 
   useEffect(() => {
-    if (data.loading || !data.date) return;
+    if (checked || data.loading || !data.date) return;
+    setChecked(true); // only check once per mount
     const lastSeen = localStorage.getItem(SHAME_SEEN_KEY);
     if (lastSeen) {
       const elapsed = Date.now() - parseInt(lastSeen, 10);
@@ -263,7 +282,7 @@ export function ShamePopup() {
       if (elapsed < fourHours) return;
     }
     setOpen(true);
-  }, [data.loading, data.date]);
+  }, [data.loading, data.date, checked]);
 
   function handleClose(val: boolean) {
     if (!val) {
