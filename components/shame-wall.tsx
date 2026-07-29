@@ -136,24 +136,34 @@ export function useShameData() {
   const fetchRoasts = useCallback(async (force = false) => {
     setLoading(true);
     setError("");
+    console.log("[shame-wall] fetchRoasts called | force:", force);
     try {
       const token = await auth.currentUser?.getIdToken();
-      if (!token) return;
+      if (!token) {
+        console.warn("[shame-wall] No auth token — user not logged in?");
+        return;
+      }
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const forceParam = force ? "&force=1" : "";
-      const res = await fetch(`/api/shame?tz=${encodeURIComponent(tz)}${forceParam}&_t=${Date.now()}`, {
+      const url = `/api/shame?tz=${encodeURIComponent(tz)}${forceParam}&_t=${Date.now()}`;
+      console.log("[shame-wall] Fetching:", url);
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       });
+      console.log("[shame-wall] Response status:", res.status);
       const d = await res.json();
+      console.log("[shame-wall] Response data:", JSON.stringify(d).slice(0, 500));
       if (d.ok) {
         setEntries(d.entries);
         setDate(d.date);
         setTotalAppsToday(d.totalAppsToday ?? 0);
       } else {
+        console.error("[shame-wall] API error:", d.error);
         setError(d.error || "Failed to load");
       }
-    } catch {
+    } catch (err) {
+      console.error("[shame-wall] Fetch error:", err);
       setError("Failed to fetch roasts");
     } finally {
       setLoading(false);

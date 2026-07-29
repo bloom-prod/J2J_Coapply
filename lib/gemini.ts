@@ -76,10 +76,17 @@ async function callWithFallback(
   maxTokens: number,
 ): Promise<string | null> {
   const providers = getProviders();
+  console.log("[LLM] callWithFallback — providers available:", providers.map((p) => p.name).join(", ") || "NONE");
   for (const provider of providers) {
+    console.log(`[LLM] Trying ${provider.name}...`);
     const result = await callLLM(provider, systemPrompt, userPrompt, maxTokens);
-    if (result) return result;
+    if (result) {
+      console.log(`[LLM] ${provider.name} succeeded (${result.length} chars)`);
+      return result;
+    }
+    console.warn(`[LLM] ${provider.name} returned null, trying next...`);
   }
+  console.error("[LLM] All providers failed — using fallback");
   return null;
 }
 
