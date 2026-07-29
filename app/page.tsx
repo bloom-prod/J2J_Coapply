@@ -18,6 +18,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ShamePopup } from "@/components/shame-wall";
 import type { Job } from "@/lib/types";
 
 const CSV_HEADERS = [
@@ -204,6 +205,8 @@ export default function Page() {
         existingJobs={bloom.myJobs}
         onImport={bloom.bulkCreateJobs}
       />
+
+      <ShamePopup />
 
       {/* Profile dialog */}
       <Dialog open={profileOpen} onOpenChange={setProfileOpen}>

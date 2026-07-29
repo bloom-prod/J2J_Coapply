@@ -20,6 +20,7 @@ import { auth } from "@/lib/firebase";
 import { STATUSES, type CommunityStats, type FeedEvent, type Job } from "@/lib/types";
 import { timeAgo } from "@/lib/job-utils";
 import { useDarkMode } from "@/hooks/use-dark-mode";
+import { ShameWall } from "@/components/shame-wall";
 
 const STATUS_COLORS = ["#185FA5", "#6B9E6B", "#D4537E", "#3B6D11", "#A32D2D", "#9E9088", "#854F0B"];
 const FALLBACK_COLORS = ["#E07BA0","#7BB87B","#78AEDE","#DDB060","#A87BD4","#5FC5C5","#E8895A"];
@@ -226,6 +227,8 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
       <div className="privacy-note">
         <i className="ti ti-info-circle" /> Stats below are pooled across everyone using bloom right now.
       </div>
+
+      <ShameWall />
 
       <div className="stats-row">
         {card("u", cards.totalUsers, "Gardeners", true)}
