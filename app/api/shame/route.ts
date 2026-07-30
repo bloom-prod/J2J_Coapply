@@ -96,11 +96,14 @@ export async function GET(req: Request) {
       throw dbErr;
     }
 
-    // Count applications per user for today
+    // Count applications per user for today — exclude "Want to Apply" (not yet applied)
     const countsByUid: Record<string, number> = {};
     appsSnap.forEach((doc) => {
-      const uid = doc.data().ownerUid as string;
-      if (uid) countsByUid[uid] = (countsByUid[uid] || 0) + 1;
+      const data = doc.data();
+      const uid = data.ownerUid as string;
+      if (!uid) return;
+      if (data.status === "Want to Apply") return;
+      countsByUid[uid] = (countsByUid[uid] || 0) + 1;
     });
     console.log("[shame] countsByUid:", JSON.stringify(countsByUid));
 
