@@ -10,6 +10,18 @@ export const STATUSES = [
 ] as const;
 export type Status = (typeof STATUSES)[number];
 
+// Statuses that mean "the company progressed this to an interview stage".
+// Used to set a sticky `reachedInterview` flag so the interview rate reflects
+// applications that ever got this far, not just ones currently sitting there
+// (an app that went Interview -> Rejected should still count).
+export const INTERVIEW_STAGE_STATUSES = ["Interview", "Offer"] as const;
+
+// "Want to Apply" is a wishlist/bookmark state — the user hasn't applied yet.
+// It must not count toward daily application totals, and must not emit an
+// "applied" feed event (that made the activity feed announce bookmarks as
+// applications, showing far more activity than the shame count).
+export const NOT_YET_APPLIED_STATUS = "Want to Apply";
+
 export const PRIORITIES = ["High", "Medium", "Low"] as const;
 export type Priority = (typeof PRIORITIES)[number];
 

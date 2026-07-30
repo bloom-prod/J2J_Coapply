@@ -13,7 +13,10 @@ interface LLMProvider {
 function getProviders(): LLMProvider[] {
   const providers: LLMProvider[] = [];
 
-  const groqToken = process.env.GROQ_API_MODEL || "";
+  // GROQ_API_MODEL is a legacy misnomer — it holds the API key, not a model
+  // name, and it's what .env.local currently defines. Prefer the correctly
+  // named var so the env can be renamed without touching code.
+  const groqToken = process.env.GROQ_API_KEY || process.env.GROQ_API_MODEL || "";
   if (groqToken) {
     providers.push({
       name: "Groq",

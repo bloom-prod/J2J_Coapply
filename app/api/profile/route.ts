@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb, adminAuth } from "@/lib/firebase-admin";
 import { requireUser, HttpError } from "@/lib/auth-server";
+import { pickColorForNewUser, resolveUserColor } from "@/lib/user-colors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,14 +26,30 @@ export async function GET(req: Request) {
     const ref = adminDb.collection("userProfiles").doc(user.uid);
     const snap = await ref.get();
     if (!snap.exists) {
-      // Return default profile if not yet created
+      // First time we've seen this user — create their profile now (rather than
+      // only on their first manual edit) so they show up in community features
+      // immediately, and assign a color once so it never shifts with snapshot order.
+      const existingSnap = await adminDb.collection("userProfiles").get();
+      // Resolve each existing user's *displayed* color (stored, or uid-hash for
+      // legacy profiles without one) so the new user avoids all of them.
+      const takenColors = existingSnap.docs.map((d) => {
+        const x = d.data();
+        return resolveUserColor(d.id, (x.name as string) || "Someone", x.color as string | undefined);
+      });
+      const color = pickColorForNewUser(user.uid, takenColors);
+      await ref.set({
+        name: user.name,
+        email: user.email,
+        color,
+        createdAt: FieldValue.serverTimestamp(),
+      });
       return NextResponse.json({
         ok: true,
         profile: {
           uid: user.uid,
           name: user.name,
           email: user.email,
-          color: "#78AEDE",
+          color,
           githubUrl: "",
           linkedinUrl: "",
           websiteUrl: "",
@@ -42,13 +59,16 @@ export async function GET(req: Request) {
       });
     }
     const data = snap.data() as Record<string, unknown>;
+    const name = (data.name as string) || user.name;
     return NextResponse.json({
       ok: true,
       profile: {
         uid: user.uid,
-        name: (data.name as string) || user.name,
+        name,
         email: (data.email as string) || user.email,
-        color: (data.color as string) || "#78AEDE",
+        // Same resolution as the charts/listeners use, so the Profile dialog
+        // never shows a different color than the rest of the app.
+        color: resolveUserColor(user.uid, name, data.color as string | undefined),
         githubUrl: (data.githubUrl as string) || "",
         linkedinUrl: (data.linkedinUrl as string) || "",
         websiteUrl: (data.websiteUrl as string) || "",

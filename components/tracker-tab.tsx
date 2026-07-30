@@ -6,12 +6,9 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { STATUSES, type Job } from "@/lib/types";
 import { classifyRole, fmtDate, isStarred, PRIORITY_ORDER, statusKey } from "@/lib/job-utils";
+import { jobKey } from "@/lib/import-utils";
 
 const FILTERS = ["All", ...STATUSES, "⭐"] as const;
-
-function jobKey(j: { company: string; role: string; url: string }) {
-  return `${j.company}|${j.role}|${j.url}`;
-}
 
 export function TrackerTab({
   jobs,

@@ -44,7 +44,22 @@ const auth = getAuth(app);
 
 // ── Date helpers ────────────────────────────────────────────────────────
 
-/** Get yesterday's date string (the day we're reporting on at 6 AM). */
+/** Shift a YYYY-MM-DD string by whole days, independent of the server's timezone.
+ *  A bare "T00:00:00" parses as server-local; on a UTC-ahead server toISOString()
+ *  would then roll the date back a day and shift the whole report window. */
+function shiftDateStr(dateStr, days) {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Get the date string for the report window that just closed.
+ * The reporting window is 6 AM to 6 AM EST, so if this runs before 6 AM
+ * (e.g. the cron fires a few minutes early, or is rerun manually), the
+ * window we should report on is two days back, not one — otherwise we'd
+ * report on a window that hasn't closed yet and miss its last applications.
+ */
 function yesterdayEST() {
   const now = new Date();
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -52,13 +67,13 @@ function yesterdayEST() {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
+    hour: "numeric",
+    hour12: false,
   }).formatToParts(now);
   const get = (t) => parts.find((p) => p.type === t)?.value || "";
   const todayStr = `${get("year")}-${get("month")}-${get("day")}`;
-  // Roll back one day — we're reporting on yesterday
-  const d = new Date(todayStr + "T00:00:00");
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
+  const hour = parseInt(get("hour"), 10);
+  return shiftDateStr(todayStr, hour < 6 ? -2 : -1);
 }
 
 /** Get UTC timestamp range for a given local EST date (6 AM to 6 AM). */
@@ -82,10 +97,7 @@ function dayRange(dateStr) {
   const dayStart = new Date(`${dateStr}T06:00:00Z`);
   dayStart.setTime(dayStart.getTime() - offsetMs);
 
-  const nextDay = new Date(dateStr + "T00:00:00");
-  nextDay.setDate(nextDay.getDate() + 1);
-  const nextDateStr = nextDay.toISOString().slice(0, 10);
-  const dayEnd = new Date(`${nextDateStr}T06:00:00Z`);
+  const dayEnd = new Date(`${shiftDateStr(dateStr, 1)}T06:00:00Z`);
   dayEnd.setTime(dayEnd.getTime() - offsetMs);
 
   return { dayStart, dayEnd };
@@ -171,17 +183,38 @@ function buildFallbackContent(name, appsYesterday) {
 }
 
 // ── Email HTML ──────────────────────────────────────────────────────────
+
+/** Escape text interpolated into HTML — the LLM's output isn't trusted markup. */
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/** Only allow http(s) URLs through into an href — anything else (javascript:, data:, etc.) is dropped. */
+function safeUrl(url) {
+  try {
+    const u = new URL(String(url));
+    return u.protocol === "http:" || u.protocol === "https:" ? u.toString() : "#";
+  } catch {
+    return "#";
+  }
+}
+
 function buildEmailHtml(name, appsYesterday, note, jobs) {
   const jobRows = jobs
     .map(
       (j) =>
         `<tr>
           <td style="padding:8px 12px;border-bottom:1px solid #eee;">
-            <strong>${j.company}</strong><br/>
-            <span style="color:#666;">${j.role}</span>
+            <strong>${escapeHtml(j.company)}</strong><br/>
+            <span style="color:#666;">${escapeHtml(j.role)}</span>
           </td>
           <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:right;">
-            <a href="${j.url}" style="background:#2563eb;color:#fff;padding:6px 14px;border-radius:6px;text-decoration:none;font-size:13px;">Apply</a>
+            <a href="${escapeHtml(safeUrl(j.url))}" style="background:#2563eb;color:#fff;padding:6px 14px;border-radius:6px;text-decoration:none;font-size:13px;">Apply</a>
           </td>
         </tr>`
     )
@@ -191,7 +224,7 @@ function buildEmailHtml(name, appsYesterday, note, jobs) {
 <html>
 <head><meta charset="utf-8"/></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto;padding:20px;color:#1a1a1a;">
-  <h2 style="margin-bottom:4px;">Good morning, ${name}!</h2>
+  <h2 style="margin-bottom:4px;">Good morning, ${escapeHtml(name)}!</h2>
   <p style="color:#666;margin-top:0;">Here's your daily job hunt update.</p>
 
   <div style="background:#f0f9ff;border-left:4px solid #2563eb;padding:16px;border-radius:0 8px 8px 0;margin:20px 0;">
@@ -199,7 +232,7 @@ function buildEmailHtml(name, appsYesterday, note, jobs) {
     <div style="color:#666;">application${appsYesterday !== 1 ? "s" : ""} yesterday</div>
   </div>
 
-  <p style="line-height:1.6;">${note}</p>
+  <p style="line-height:1.6;">${escapeHtml(note)}</p>
 
   <h3 style="margin-top:28px;">Jobs to check out today</h3>
   <table style="width:100%;border-collapse:collapse;">
