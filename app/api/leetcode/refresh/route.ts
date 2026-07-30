@@ -306,7 +306,7 @@ async function syncUser(
     batch.update(profileRef, { leetcodeLastSyncedAt: FieldValue.serverTimestamp() });
 
     for (const p of newProblems) {
-      const ref = adminDb.collection("leetcodeProblems").doc(p.problemId);
+      const ref = adminDb.collection("leetcodeProblems").doc(`${uid}_${p.problemId}`);
       batch.set(ref, {
         problemId: p.problemId,
         title: p.title,

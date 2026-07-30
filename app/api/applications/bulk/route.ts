@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue, WriteBatch } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase-admin";
 import { requireUser, HttpError } from "@/lib/auth-server";
-import { STATUSES } from "@/lib/types";
+import { STATUSES, INTERVIEW_STAGE_STATUSES, NOT_YET_APPLIED_STATUS } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,6 +53,7 @@ export async function POST(req: Request) {
     const batch: WriteBatch = adminDb.batch();
     const ids: string[] = [];
     let created = 0;
+    let appliedCount = 0;
 
     rows.forEach((raw: Record<string, unknown>) => {
       const data = pickFields(raw);
@@ -68,25 +69,31 @@ export async function POST(req: Request) {
         status: validStatus,
         starred: false,
         ownerUid: user.uid,
+        reachedInterview: INTERVIEW_STAGE_STATUSES.includes(validStatus as (typeof INTERVIEW_STAGE_STATUSES)[number]),
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
       created++;
+      if (validStatus !== NOT_YET_APPLIED_STATUS) appliedCount++;
     });
 
     if (created === 0) throw new HttpError(400, "No valid rows (company & role required)");
 
     await batch.commit();
 
-    // Single feed event summarizing the bulk import.
-    await adminDb.collection(FEED).add({
-      type: "applied",
-      company: `${created} applications`,
-      role: "Bulk import",
-      status: "Applied",
-      ownerUid: user.uid,
-      ts: FieldValue.serverTimestamp(),
-    });
+    // Single feed event summarizing the bulk import. Only counts rows that are
+    // actually applications — importing a shortlist of "Want to Apply" rows
+    // shouldn't announce them as applications.
+    if (appliedCount > 0) {
+      await adminDb.collection(FEED).add({
+        type: "applied",
+        company: `${appliedCount} application${appliedCount === 1 ? "" : "s"}`,
+        role: "Bulk import",
+        status: "Applied",
+        ownerUid: user.uid,
+        ts: FieldValue.serverTimestamp(),
+      });
+    }
 
     return NextResponse.json({ ok: true, created, ids });
   } catch (err) {

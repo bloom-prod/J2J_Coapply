@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { requireUser, HttpError } from "@/lib/auth-server";
 import { classifyRole } from "@/lib/job-utils";
+import { resolveUserColor } from "@/lib/user-colors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,9 +17,6 @@ const STATUSES = [
   "Ghosted",
   "Withdrawn",
 ];
-
-const USER_COLORS = ["#E07BA0","#7BB87B","#78AEDE","#DDB060","#A87BD4","#5FC5C5","#E8895A"];
-const NAME_COLOR_OVERRIDES: Record<string, string> = { "Shruti": "#FF69B4" };
 
 const rate = (part: number, total: number) =>
   total ? Math.round((part / total) * 100) : 0;
@@ -41,10 +39,10 @@ export async function GET(req: Request) {
     // Build uid -> name and name -> color maps from userProfiles
     const uidToName = new Map<string, string>();
     const userColors: Record<string, string> = {};
-    profilesSnap.docs.forEach((doc, i) => {
+    profilesSnap.docs.forEach((doc) => {
       const data = doc.data();
       const name = (data.name as string) || "Someone";
-      const color = NAME_COLOR_OVERRIDES[name] || (data.color as string) || USER_COLORS[i % USER_COLORS.length];
+      const color = resolveUserColor(doc.id, name, data.color as string | undefined);
       uidToName.set(doc.id, name);
       userColors[name] = color;
     });
@@ -84,10 +82,14 @@ export async function GET(req: Request) {
 
       const status = j.status || "Applied";
       statusCounts[status] = (statusCounts[status] || 0) + 1;
-      if (status === "Interview" || status === "Offer") interviewish++;
+      // reachedInterview is a sticky flag set once a status ever hits Interview/Offer,
+      // so an app that later moved to Rejected still counts toward the interview rate.
+      if (status === "Interview" || status === "Offer" || (j as unknown as { reachedInterview?: boolean }).reachedInterview) interviewish++;
       if (status === "Offer") offers++;
-      // Exclude "Want to Apply" from response calculation since it's pre-application
-      if (status !== "Want to Apply" && status !== "Applied" && status !== "Ghosted") responded++;
+      // Responded = the company took an action (screen/interview/offer/rejection).
+      // Excludes Want to Apply / Applied (no response yet), Ghosted (no response),
+      // and Withdrawn (the applicant's own action, not a company response).
+      if (status === "Phone Screen" || status === "Interview" || status === "Offer" || status === "Rejected") responded++;
 
       if (j.company) companyCounts[j.company] = (companyCounts[j.company] || 0) + 1;
       if (j.date) {
