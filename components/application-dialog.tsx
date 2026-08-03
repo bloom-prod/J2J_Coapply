@@ -27,7 +27,7 @@ const EMPTY: Form = {
   company: "",
   role: "",
   roleCategory: "",
-  status: "Want to Apply",
+  status: "Applied",
   priority: "High",
   location: "",
   date: "",
@@ -80,7 +80,11 @@ export function ApplicationDialog({
         roleCategory: prefill.roleCategory || classifyRole(prefill.role || ""),
       });
     } else {
-      setForm({ ...EMPTY, date: todayISO() });
+      setForm({
+        ...EMPTY,
+        status: window.matchMedia("(pointer: coarse)").matches ? "Want to Apply" : "Applied",
+        date: todayISO(),
+      });
     }
   }, [open, job, prefill]);
 
