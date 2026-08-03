@@ -14,15 +14,18 @@ require("dotenv").config({ path: require("path").join(__dirname, ".env") });
 const { initializeApp, cert, getApps } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
 const { getAuth } = require("firebase-admin/auth");
-const { Resend } = require("resend");
+const nodemailer = require("nodemailer");
 
 // ── Config ──────────────────────────────────────────────────────────────
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const FROM_EMAIL = process.env.DAILY_EMAIL_FROM || "onboarding@resend.dev";
+const SMTP_HOST = process.env.SMTP_HOST;
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587", 10);
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+const FROM_EMAIL = process.env.SMTP_FROM;
 
-if (!RESEND_API_KEY) {
-  console.error("Missing RESEND_API_KEY in .env");
+if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !FROM_EMAIL) {
+  console.error("Missing SMTP_HOST, SMTP_USER, SMTP_PASS, or SMTP_FROM in .env");
   process.exit(1);
 }
 
@@ -254,7 +257,13 @@ async function main() {
   });
 
   // 4. Send emails
-  const resend = new Resend(RESEND_API_KEY);
+  const transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_PORT === 465,
+    auth: { user: SMTP_USER, pass: SMTP_PASS },
+  });
+
   let sent = 0;
   let failed = 0;
 
@@ -272,7 +281,7 @@ async function main() {
     const html = buildEmailHtml(name, appsYesterday, content.note, content.jobs || []);
 
     try {
-      await resend.emails.send({
+      await transporter.sendMail({
         from: FROM_EMAIL,
         to: user.email,
         subject: content.subject || "Your daily job hunt update",
