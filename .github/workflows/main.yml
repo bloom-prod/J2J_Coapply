@@ -10,7 +10,7 @@ jobs:
       
       - name: Deploy
         run: |
-          cd ~/docker/jobless
+          cd ~/srv/jobless
           # Already pulled by checkout, now run your commands:
           docker compose down
           docker compose up -d --build
