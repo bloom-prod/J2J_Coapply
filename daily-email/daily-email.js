@@ -232,6 +232,7 @@ async function main() {
   // 2. Get yesterday's applications
   const appsSnap = await db
     .collection("applications")
+    .where("status", "==", "Applied")
     .where("createdAt", ">=", dayStart)
     .where("createdAt", "<", dayEnd)
     .get();
