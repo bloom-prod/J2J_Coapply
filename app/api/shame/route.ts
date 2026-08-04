@@ -14,17 +14,32 @@ export const dynamic = "force-dynamic";
 // own timezone would split the cache per viewer and desync the totals.
 const TZ = "America/New_York";
 
-/** Get the EST/EDT UTC offset in ms by comparing a known UTC time to its local representation. */
-function getEasternOffsetMs(refDate: Date): number {
+/** Read the wall-clock fields of `d` as rendered in Eastern time.
+ *  Values come back as numbers so nothing depends on how ICU pads or formats
+ *  them — rebuilding a parseable "YYYY-MM-DDTHH:mm:ssZ" string here is fragile
+ *  (a single-digit minute, or an "24" hour under an h24 hour cycle, yields an
+ *  unparseable string, and the resulting NaN propagates into the Firestore
+ *  query as an Invalid Date). `hour % 24` folds the h24 midnight spelling. */
+function easternParts(d: Date) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: TZ,
     year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "numeric", minute: "numeric", hour12: false,
-  }).formatToParts(refDate);
-  const g = (t: string) => parts.find((p) => p.type === t)?.value || "";
-  const localMs = new Date(
-    `${g("year")}-${g("month")}-${g("day")}T${String(parseInt(g("hour"))).padStart(2, "0")}:${g("minute")}:00Z`
-  ).getTime();
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(d);
+  const n = (t: string) => {
+    const v = parseInt(parts.find((p) => p.type === t)?.value ?? "", 10);
+    if (!Number.isFinite(v)) {
+      throw new Error(`[shame] Intl produced no usable "${t}" for ${TZ}`);
+    }
+    return v;
+  };
+  return { year: n("year"), month: n("month"), day: n("day"), hour: n("hour") % 24, minute: n("minute") };
+}
+
+/** Get the EST/EDT UTC offset in ms by comparing a known UTC time to its local representation. */
+function getEasternOffsetMs(refDate: Date): number {
+  const p = easternParts(refDate);
+  const localMs = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute);
   // localMs is truncated to the minute, so compare against refDate truncated the
   // same way. Subtracting the raw refDate would fold its seconds/milliseconds
   // into the "offset", drifting the 6 AM window boundary by up to 59.999s
@@ -54,23 +69,27 @@ function shiftDateStr(dateStr: string, days: number): string {
 function effectiveToday(): { dateStr: string; dayStart: Date; dayEnd: Date } {
   const now = new Date();
   const offsetMs = getEasternOffsetMs(now);
+  const p = easternParts(now);
 
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ,
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "numeric", hour12: false,
-  }).formatToParts(now);
-  const g = (t: string) => parts.find((p) => p.type === t)?.value || "";
-  const hour = parseInt(g("hour"), 10);
-  let dateStr = `${g("year")}-${g("month")}-${g("day")}`;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  let dateStr = `${p.year}-${pad(p.month)}-${pad(p.day)}`;
 
-  if (hour < 6) dateStr = shiftDateStr(dateStr, -1);
+  if (p.hour < 6) dateStr = shiftDateStr(dateStr, -1);
 
   const dayStart = new Date(`${dateStr}T06:00:00Z`);
   dayStart.setTime(dayStart.getTime() - offsetMs);
 
   const dayEnd = new Date(`${shiftDateStr(dateStr, 1)}T06:00:00Z`);
   dayEnd.setTime(dayEnd.getTime() - offsetMs);
+
+  // Never hand an Invalid Date to Firestore: it surfaces as the opaque
+  // 'Value for argument "seconds" is not a valid integer' from Timestamp.fromDate,
+  // with nothing in the message pointing back at this window calculation.
+  if (Number.isNaN(dayStart.getTime()) || Number.isNaN(dayEnd.getTime())) {
+    throw new Error(
+      `[shame] invalid day window: dateStr=${dateStr} offsetMs=${offsetMs} parts=${JSON.stringify(p)}`
+    );
+  }
 
   return { dateStr, dayStart, dayEnd };
 }
