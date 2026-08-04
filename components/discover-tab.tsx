@@ -19,6 +19,8 @@ interface DiscoverCompany {
   appliedBy: string[];
   statuses: string[];
   count: number;
+  /** Most recent application date across this company's jobs (ISO-ish string, "" if unknown). */
+  latestDate: string;
 }
 
 /** Collapse all whitespace (including non-breaking spaces) to a single regular space, lowercase, trim. */
@@ -64,7 +66,7 @@ export function DiscoverTab({
 }) {
   const dark = useDarkMode();
   const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"popular" | "alpha">("popular");
+  const [sortBy, setSortBy] = useState<"recent" | "popular" | "alpha">("recent");
 
   const DISMISSED_KEY = "discover-dismissed";
   const [dismissed, setDismissed] = useState<Set<string>>(() => {
@@ -117,9 +119,12 @@ export function DiscoverTab({
         appliedBy: [],
         statuses: [],
         count: filtered.length,
+        latestDate: "",
       };
 
       for (const j of filtered) {
+        const applied = j.date || j.added || "";
+        if (applied > entry.latestDate) entry.latestDate = applied;
         if (j.role && !entry.roles.includes(j.role)) entry.roles.push(j.role);
         if (j.url && !entry.urls.includes(j.url)) entry.urls.push(j.url);
         if (j.ownerName && !entry.appliedBy.includes(j.ownerName))
@@ -142,7 +147,15 @@ export function DiscoverTab({
       );
     }
 
-    if (sortBy === "popular") {
+    if (sortBy === "recent") {
+      // Newest application first; companies with no date sink to the bottom.
+      list.sort(
+        (a, b) =>
+          b.latestDate.localeCompare(a.latestDate) ||
+          b.count - a.count ||
+          a.company.localeCompare(b.company)
+      );
+    } else if (sortBy === "popular") {
       list.sort((a, b) => b.count - a.count);
     } else {
       list.sort((a, b) => a.company.localeCompare(b.company));
@@ -172,11 +185,12 @@ export function DiscoverTab({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <Select value={sortBy} onValueChange={(v) => setSortBy(v as "popular" | "alpha")}>
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as "recent" | "popular" | "alpha")}>
             <SelectTrigger className="h-9 w-full sm:w-[150px] rounded-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="recent">Newest applied</SelectItem>
               <SelectItem value="popular">Most popular</SelectItem>
               <SelectItem value="alpha">A &rarr; Z</SelectItem>
             </SelectContent>
