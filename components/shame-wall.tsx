@@ -212,12 +212,17 @@ function ShameContent({ entries, totalAppsToday, date, loading, error, onRefresh
   );
 }
 
-// Hook to fetch shame data — shared by both the embed and the popup
-export function useShameData() {
+// Hook to fetch shame data — shared by both the embed and the popup.
+// `enabled` gates the automatic on-mount/on-become-visible fetch: the embed
+// shouldn't fetch while collapsed, and the popup shouldn't fetch when it's
+// not going to open — otherwise both independently hit /api/shame on every
+// page load, doubling network calls (the server does dedupe LLM generation
+// itself via a lock, but there's no reason to fire two requests at all).
+export function useShameData(enabled = true) {
   const [entries, setEntries] = useState<ShameEntry[]>([]);
   const [date, setDate] = useState("");
   const [totalAppsToday, setTotalAppsToday] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState("");
 
   const fetchRoasts = useCallback(async (force = false) => {
@@ -230,9 +235,10 @@ export function useShameData() {
         console.warn("[shame-wall] No auth token — user not logged in?");
         return;
       }
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      const forceParam = force ? "&force=1" : "";
-      const url = `/api/shame?tz=${encodeURIComponent(tz)}${forceParam}&_t=${Date.now()}`;
+      // No tz param: the shame day boundary is fixed to US Eastern server-side
+      // so the whole group sees the same day, counts, and cached roasts.
+      const forceParam = force ? "force=1&" : "";
+      const url = `/api/shame?${forceParam}_t=${Date.now()}`;
       console.log("[shame-wall] Fetching:", url);
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` },
@@ -257,7 +263,9 @@ export function useShameData() {
     }
   }, []);
 
-  useEffect(() => { fetchRoasts(false); }, [fetchRoasts]);
+  useEffect(() => {
+    if (enabled) fetchRoasts(false);
+  }, [enabled, fetchRoasts]);
 
   const forceRefresh = useCallback(() => fetchRoasts(true), [fetchRoasts]);
   const softRefresh = useCallback(() => fetchRoasts(false), [fetchRoasts]);
@@ -268,17 +276,17 @@ export function useShameData() {
 // Collapsible embedded card for the Community tab
 export function ShameWall() {
   useEffect(() => { ensureFlameStyles(); }, []);
-  const data = useShameData();
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem(SHAME_COLLAPSED_KEY) === "1";
   });
+  const data = useShameData(!collapsed);
 
   function toggle() {
     const next = !collapsed;
     setCollapsed(next);
     localStorage.setItem(SHAME_COLLAPSED_KEY, next ? "1" : "0");
-    if (!next) data.softRefresh(); // re-fetch latest counts when expanding
+    // useShameData(!collapsed) already re-fetches when `enabled` flips to true.
   }
 
   return (
@@ -346,7 +354,7 @@ function shouldShowPopup(): boolean {
 export function ShamePopup() {
   // Decide on mount whether to show — never re-evaluate
   const [open, setOpen] = useState(() => shouldShowPopup());
-  const data = useShameData();
+  const data = useShameData(open);
 
   useEffect(() => { ensureFlameStyles(); }, []);
 

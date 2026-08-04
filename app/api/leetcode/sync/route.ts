@@ -5,13 +5,16 @@ import { adminDb } from "@/lib/firebase-admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET || "dev-secret";
+const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET || "";
 
 function fail(status: number, error: string) {
   return NextResponse.json({ ok: false, error }, { status });
 }
 
+// Fails closed: if the secret isn't configured, no request can pass —
+// never fall back to a hardcoded default that could be sent by anyone.
 function checkSecret(req: Request): boolean {
+  if (!INTERNAL_SECRET) return false;
   const secret = req.headers.get("x-internal-secret");
   return secret === INTERNAL_SECRET;
 }
@@ -79,7 +82,7 @@ export async function POST(req: Request) {
 
     // Write problems to root collection with userId
     for (const p of body.problems) {
-      const ref = adminDb.collection("leetcodeProblems").doc(p.problemId);
+      const ref = adminDb.collection("leetcodeProblems").doc(`${uid}_${p.problemId}`);
       batch.set(ref, {
         problemId: p.problemId,
         title: p.title,

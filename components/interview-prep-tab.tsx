@@ -201,8 +201,10 @@ export function InterviewPrepTab({
       )}
 
       <div className="interview-prep-layout">
-        {/* Company Filter */}
-        <div className="interview-prep-sidebar" style={{ width: "100%" }}>
+        {/* Company Filter — width is owned by CSS: 140px sticky on desktop,
+            full-width stacked under the 640px breakpoint. Don't set it inline,
+            an inline width beats the media query and squashes the posts column. */}
+        <div className="interview-prep-sidebar">
           <div className="interview-prep-sidebar-title">Companies</div>
           <Input
             placeholder="Search..."
@@ -324,16 +326,7 @@ export function InterviewPrepTab({
                             value={commentText}
                             onChange={(e) => setCommentText(e.target.value)}
                             rows={2}
-                            style={{
-                              width: "100%",
-                              padding: "8px 10px",
-                              borderRadius: "6px",
-                              border: "1px solid var(--border)",
-                              backgroundColor: "var(--card-bg)",
-                              color: "var(--text-dark)",
-                              fontSize: "12px",
-                              fontFamily: "inherit",
-                            }}
+                            className="interview-prep-textarea"
                           />
                           <Button
                             size="sm"

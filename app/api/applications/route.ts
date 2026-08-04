@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase-admin";
 import { requireUser, HttpError } from "@/lib/auth-server";
+import { STATUSES, INTERVIEW_STAGE_STATUSES, NOT_YET_APPLIED_STATUS } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +30,9 @@ function pickFields(input: Record<string, unknown>): Record<string, string | boo
   for (const k of FIELDS) {
     if (input[k] === undefined) continue;
     out[k] = String(input[k] ?? "").trim();
+  }
+  if (typeof out.status === "string" && out.status) {
+    if (!STATUSES.includes(out.status as (typeof STATUSES)[number])) out.status = "Applied";
   }
   if (input.starred !== undefined) out.starred = input.starred === true || input.starred === "true";
   return out;
@@ -63,17 +67,23 @@ export async function POST(req: Request) {
       status,
       starred: data.starred === true,
       ownerUid: user.uid,
-            createdAt: now,
+      reachedInterview: INTERVIEW_STAGE_STATUSES.includes(status as (typeof INTERVIEW_STAGE_STATUSES)[number]),
+      createdAt: now,
       updatedAt: now,
     });
 
-    await addFeedEvent({
-      type: status === "Offer" ? "offer" : "applied",
-      company: data.company as string,
-      role: data.role as string,
-      status,
-      ownerUid: user.uid,
-          });
+    // Adding a "Want to Apply" row is bookmarking a job, not applying to one —
+    // no feed event, or the activity list announces "applied to X" for jobs the
+    // user has only shortlisted. The real event fires on the status change in PUT.
+    if (status !== NOT_YET_APPLIED_STATUS) {
+      await addFeedEvent({
+        type: status === "Offer" ? "offer" : "applied",
+        company: data.company as string,
+        role: data.role as string,
+        status,
+        ownerUid: user.uid,
+      });
+    }
 
     return NextResponse.json({ ok: true, id: ref.id });
   } catch (err) {
@@ -98,17 +108,26 @@ export async function PUT(req: Request) {
     }
 
     const data = pickFields(body);
-    await ref.update({ ...data, updatedAt: FieldValue.serverTimestamp() });
-
     const newStatus = data.status as string | undefined;
+    const update: Record<string, unknown> = { ...data, updatedAt: FieldValue.serverTimestamp() };
+    // Sticky flag: once an application reaches an interview stage, it stays
+    // "interview-ish" for reporting even if it's later rejected/ghosted/withdrawn.
+    if (newStatus && INTERVIEW_STAGE_STATUSES.includes(newStatus as (typeof INTERVIEW_STAGE_STATUSES)[number])) {
+      update.reachedInterview = true;
+    }
+    await ref.update(update);
+
     if (newStatus && newStatus !== existing.status) {
+      // Leaving "Want to Apply" is the moment they actually applied, so report it
+      // as an application rather than a generic status change.
+      const justApplied = existing.status === NOT_YET_APPLIED_STATUS && newStatus === "Applied";
       await addFeedEvent({
-        type: newStatus === "Offer" ? "offer" : "status",
+        type: newStatus === "Offer" ? "offer" : justApplied ? "applied" : "status",
         company: (data.company as string) || (existing.company as string) || "",
         role: (data.role as string) || (existing.role as string) || "",
         status: newStatus,
         ownerUid: user.uid,
-              });
+      });
     }
 
     return NextResponse.json({ ok: true, id });

@@ -20,9 +20,8 @@ import {
 import { toast } from "sonner";
 import { auth, db } from "@/lib/firebase";
 import type { FeedEvent, Job, JobPost, Resume, UserProfile, InterviewPrepPost, InterviewPrepComment } from "@/lib/types";
-
-const USER_COLORS = ["#E07BA0","#7BB87B","#78AEDE","#DDB060","#A87BD4","#5FC5C5","#E8895A"];
-const NAME_COLOR_OVERRIDES: Record<string, string> = { "Shruti": "#FF69B4" }; // hot pink
+import { resolveUserColor } from "@/lib/user-colors";
+import { jobKey } from "@/lib/import-utils";
 
 async function ensureUserProfile(_uid: string, _name: string, _email: string | null) {
   // Disabled Firestore access - user profiles not stored in Firestore
@@ -157,32 +156,46 @@ export function useBloom() {
       (err) => console.error("feed snapshot error", err)
     );
 
-    // Fetch uid→name map from server (admin SDK bypasses Firestore client rules)
-    (async () => {
+    // uid→name/color map comes from the server (Admin SDK). A client-side
+    // onSnapshot on `userProfiles` is rejected by the deployed Firestore rules,
+    // which leaves this map empty and renders every name as "Someone" — see
+    // the note in app/api/usernames/route.ts before changing this.
+    let cancelled = false;
+    const loadNames = async () => {
       try {
         const token = await auth.currentUser?.getIdToken();
         if (!token) return;
         const res = await fetch("/api/usernames", { headers: { Authorization: `Bearer ${token}` } });
         const d = await res.json();
-        if (d.ok) {
-          const names = new Map<string, string>(Object.entries(d.uidToName));
-          const profiles = new Map<string, { name: string; color: string }>();
-          const colors = d.userColors as Record<string, string>;
-          for (const [uid, name] of names) {
-            profiles.set(uid, { name, color: colors[name] || USER_COLORS[0] });
-          }
-          setUidNameMap(names);
-          setUserProfiles(profiles);
+        if (cancelled || !d.ok) return;
+        const names = new Map<string, string>(Object.entries(d.uidToName as Record<string, string>));
+        const colors = (d.userColors || {}) as Record<string, string>;
+        const profiles = new Map<string, { name: string; color: string }>();
+        for (const [uid, name] of names) {
+          profiles.set(uid, { name, color: colors[name] || resolveUserColor(uid, name) });
         }
+        setUidNameMap(names);
+        setUserProfiles(profiles);
       } catch (err) {
         console.error("usernames fetch error", err);
       } finally {
-        profilesReady.current = true;
-        if (!firstSnap.current) setLoading(false);
+        if (!cancelled) {
+          profilesReady.current = true;
+          if (!firstSnap.current) setLoading(false);
+        }
       }
-    })();
+    };
+
+    loadNames();
+    // Names can change while the tab is open (someone renames themselves), and
+    // there's no live listener to pick that up — refresh on focus so the group
+    // sees new names without a reload. One small request, only when refocusing.
+    const onFocus = () => { loadNames(); };
+    window.addEventListener("focus", onFocus);
 
     return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
       unsubApps();
       unsubFeed();
     };
@@ -193,7 +206,22 @@ export function useBloom() {
     const patched = serverJobs
       .filter((j) => !pending.deletes[j.id])
       .map((j) => (pending.patches[j.id] ? { ...j, ...pending.patches[j.id] } : j));
-    const adds = pending.adds.filter((a) => !serverJobs.some((s) => s.id === a.id));
+    // Dedupe optimistic adds against the server list. ID match covers the
+    // common case (createJob reconciles the temp id to the real one once the
+    // POST resolves); content match covers the race where onSnapshot delivers
+    // the real doc before that reconciliation happens, which would otherwise
+    // flash the same application twice for a moment.
+    const adds = pending.adds.filter((a) => {
+      if (serverJobs.some((s) => s.id === a.id)) return false;
+      return !serverJobs.some(
+        (s) =>
+          s.ownerUid === a.ownerUid &&
+          s.company === a.company &&
+          s.role === a.role &&
+          s.date === a.date &&
+          Math.abs(new Date(s.added || 0).getTime() - new Date(a.added || 0).getTime()) < 15000
+      );
+    });
     const list = [...adds, ...patched].map((j) => ({
       ...j,
       ownerName: (j.ownerUid ? uidNameMap.get(j.ownerUid) : undefined) ?? (j.ownerName || "Someone"),
@@ -225,7 +253,7 @@ export function useBloom() {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      let d: { ok?: boolean; error?: string } = {};
+      let d: { ok?: boolean; error?: string; id?: string } = {};
       try {
         d = await res.json();
       } catch {
@@ -263,13 +291,24 @@ export function useBloom() {
         updated: now,
       };
       setPending((p) => ({ ...p, adds: [temp, ...p.adds] }));
-      toast.success("Application added 🌸 — a new tree is growing!");
+      let currentId = tempId;
       try {
-        await authedFetch("POST", data);
+        const result = await authedFetch("POST", data);
+        // Reconcile the temp id with the server-assigned one immediately, so the
+        // dedupe in `allJobs` matches on id as soon as it can (content-matching
+        // covers the remaining window before this resolves).
+        if (result.id) {
+          currentId = result.id;
+          setPending((p) => ({
+            ...p,
+            adds: p.adds.map((a) => (a.id === tempId ? { ...a, id: result.id! } : a)),
+          }));
+        }
+        toast.success("Application added 🌸 — a new tree is growing!");
       } catch (e) {
         toast.error("Save failed — " + (e as Error).message);
       } finally {
-        setPending((p) => ({ ...p, adds: p.adds.filter((a) => a.id !== tempId) }));
+        setPending((p) => ({ ...p, adds: p.adds.filter((a) => a.id !== currentId) }));
       }
     },
     [user, authedFetch]
@@ -333,9 +372,9 @@ export function useBloom() {
   const updateJob = useCallback(
     async (id: string, data: Record<string, string>) => {
       setPending((p) => ({ ...p, patches: { ...p.patches, [id]: { ...p.patches[id], ...data } } }));
-      toast.success("Updated 🌿");
       try {
         await authedFetch("PUT", { id, ...data });
+        toast.success("Updated 🌿");
       } catch (e) {
         toast.error("Save failed — " + (e as Error).message);
       } finally {
@@ -377,9 +416,9 @@ export function useBloom() {
   const deleteJob = useCallback(
     async (id: string) => {
       setPending((p) => ({ ...p, deletes: { ...p.deletes, [id]: true } }));
-      toast.success("Removed 🍂");
       try {
         await authedFetch("DELETE", { id });
+        toast.success("Removed 🍂");
       } catch (e) {
         toast.error("Delete failed — " + (e as Error).message);
       } finally {
@@ -440,7 +479,7 @@ export function useBloom() {
             if (!prev) return prev;
             const next = new Map(prev);
             const existing = next.get(uid);
-            next.set(uid, { name: newName, color: existing?.color || USER_COLORS[0] });
+            next.set(uid, { name: newName, color: existing?.color || resolveUserColor(uid, newName) });
             return next;
           });
         }
@@ -664,7 +703,7 @@ export function useBloom() {
   );
 
   const sharedJobKeys = useMemo(
-    () => new Set(resolvedJobPosts.map((p) => `${p.company}|${p.role}|${p.url}`)),
+    () => new Set(resolvedJobPosts.map((p) => jobKey(p))),
     [resolvedJobPosts]
   );
 

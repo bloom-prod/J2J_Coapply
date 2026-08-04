@@ -27,7 +27,8 @@ export interface ParsedRow {
 export type RawRow = (string | number | null | undefined)[];
 
 export function jobKey(j: { company: string; role: string; url: string }): string {
-  return `${j.company}|${j.role}|${j.url}`;
+  const norm = (s: string) => s.trim().toLowerCase().replace(/\/+$/, "");
+  return `${norm(j.company)}|${norm(j.role)}|${norm(j.url)}`;
 }
 
 function normalizeStatus(raw: string): string {

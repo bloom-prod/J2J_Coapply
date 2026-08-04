@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { requireUser, HttpError } from "@/lib/auth-server";
+import { resolveUserColor } from "@/lib/user-colors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const USER_COLORS = ["#E07BA0","#7BB87B","#78AEDE","#DDB060","#A87BD4","#5FC5C5","#E8895A"];
-const NAME_COLOR_OVERRIDES: Record<string, string> = { "Shruti": "#FF69B4" };
-
+// uid -> name/color resolution for the whole group.
+//
+// This MUST stay a server endpoint using the Admin SDK. A client-side
+// onSnapshot on `userProfiles` is rejected by the deployed Firestore rules
+// ("Missing or insufficient permissions"), which silently leaves uidNameMap
+// empty and makes every name in the feed and community views render as
+// "Someone". That regression has been introduced twice now — see commit
+// 07d6514. Don't swap this back to a client listener.
 export async function GET(req: Request) {
   try {
     await requireUser(req);
@@ -16,12 +22,11 @@ export async function GET(req: Request) {
     const uidToName: Record<string, string> = {};
     const userColors: Record<string, string> = {};
 
-    snap.docs.forEach((doc, i) => {
+    snap.docs.forEach((doc) => {
       const data = doc.data();
       const name = (data.name as string) || "Someone";
-      const color = NAME_COLOR_OVERRIDES[name] || (data.color as string) || USER_COLORS[i % USER_COLORS.length];
       uidToName[doc.id] = name;
-      userColors[name] = color;
+      userColors[name] = resolveUserColor(doc.id, name, data.color as string | undefined);
     });
 
     return NextResponse.json({ ok: true, uidToName, userColors });
