@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue, WriteBatch } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase-admin";
 import { requireUser, HttpError } from "@/lib/auth-server";
-import { STATUSES, INTERVIEW_STAGE_STATUSES, NOT_YET_APPLIED_STATUS } from "@/lib/types";
+import { STATUSES, NOT_YET_APPLIED_STATUS, reachedFlagsForStatus, type ReachedFlag } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,7 +69,8 @@ export async function POST(req: Request) {
         status: validStatus,
         starred: false,
         ownerUid: user.uid,
-        reachedInterview: INTERVIEW_STAGE_STATUSES.includes(validStatus as (typeof INTERVIEW_STAGE_STATUSES)[number]),
+        // Seed sticky funnel flags from the imported status.
+        ...(reachedFlagsForStatus(validStatus) as Record<ReachedFlag, true>),
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });

@@ -17,7 +17,7 @@ import {
   YAxis,
 } from "recharts";
 import { auth } from "@/lib/firebase";
-import { STATUSES, type CommunityStats, type FeedEvent, type Job } from "@/lib/types";
+import { STATUSES, reachedStage, type CommunityStats, type FeedEvent, type Job } from "@/lib/types";
 import { timeAgo } from "@/lib/job-utils";
 import { useDarkMode } from "@/hooks/use-dark-mode";
 import { ShameWall } from "@/components/shame-wall";
@@ -127,21 +127,26 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
     return (sc && sc[name]) || userColors.get(name) || FALLBACK_COLORS[i % FALLBACK_COLORS.length];
   };
 
-  // Aggregate cards computed from live snapshot for real-time updates
+  // Aggregate cards computed from live snapshot for real-time updates.
+  // Rates use the sticky reached* flags, so an app that went Applied → OA →
+  // Interview → Rejected still counts toward OA / interview / offer rates and
+  // not just toward the rejection bucket.
   const cards = useMemo(() => {
     const total = allJobs.length;
     const users = new Set(allJobs.map((j) => j.ownerUid).filter(Boolean)).size;
-    let interviewish = 0, offers = 0, responded = 0;
+    let oAish = 0, interviewish = 0, offers = 0, responded = 0;
     allJobs.forEach((j) => {
-      if (j.status === "Interview" || j.status === "Offer") interviewish++;
-      if (j.status === "Offer") offers++;
-      if (j.status !== "Want to Apply" && j.status !== "Applied" && j.status !== "Ghosted") responded++;
+      if (reachedStage(j, 1)) oAish++;            // ever got an OA
+      if (reachedStage(j, 3)) interviewish++;      // ever reached Interview / Offer
+      if (reachedStage(j, 4)) offers++;             // ever got an Offer
+      if (reachedStage(j, 1) || j.status === "Rejected") responded++;
     });
     const r = (part: number, t: number) => (t ? Math.round((part / t) * 100) : 0);
     return {
       totalApps: total,
       totalUsers: users,
       avgPerUser: users ? Math.round((total / users) * 10) / 10 : 0,
+      oaRate: r(oAish, total),
       interviewRate: r(interviewish, total),
       offerRate: r(offers, total),
       responseRate: r(responded, total),
@@ -157,16 +162,21 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
       if (j.company) cc[j.company] = (cc[j.company] || 0) + 1;
     });
 
-    const stageOrder: Record<string, number> = { "Phone Screen": 0, Interview: 1, Offer: 2 };
-    const funnelReached = [0, 0, 0];
+    // Community funnel: stages past "Applied" (OA → Phone Screen → Interview →
+    // Offer), counted via the sticky reached* flags so an app that ended in
+    // Rejected still appears in every stage it passed through. Local index 0
+    // maps to global funnel index 1 (OA), since Applied is the implicit top.
+    const COMMUNITY_FUNNEL = ["OA", "Phone Screen", "Interview", "Offer"];
+    const funnelReached = COMMUNITY_FUNNEL.map(() => 0);
     allJobs.forEach((j) => {
-      const o = stageOrder[j.status];
-      if (o !== undefined) for (let i = 0; i <= o; i++) funnelReached[i]++;
+      for (let i = 0; i < COMMUNITY_FUNNEL.length; i++) {
+        if (reachedStage(j, i + 1)) funnelReached[i]++;
+      }
     });
 
     return {
       status: STATUSES.map((s) => ({ name: s, value: sc[s] })),
-      funnel: ["Phone Screen", "Interview", "Offer"].map((s, i) => ({ name: s, value: funnelReached[i] })),
+      funnel: COMMUNITY_FUNNEL.map((s, i) => ({ name: s, value: funnelReached[i] })),
       companies: Object.entries(cc).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, value]) => ({ name, value })),
     };
   }, [allJobs]);
@@ -199,9 +209,10 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
       const u = by[uid];
       if (j.status === "Want to Apply") return; // count after ensuring user exists
       u.total++;
-      if (j.status === "Interview" || j.status === "Offer") u.interviews++;
-      if (j.status === "Offer") u.offers++;
-      if (j.status !== "Applied" && j.status !== "Ghosted") u.responded++;
+      // Sticky: an interview / offer reached before a rejection still counts.
+      if (reachedStage(j, 3)) u.interviews++;
+      if (reachedStage(j, 4)) u.offers++;
+      if (reachedStage(j, 1) || j.status === "Rejected") u.responded++;
     });
     return Object.values(by).sort((a, b) => b.total - a.total);
   }, [allJobs, stats?.uidToName]);
@@ -234,6 +245,7 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
         {card("u", cards.totalUsers, "Gardeners", true)}
         {card("a", cards.totalApps, "Applications")}
         {card("v", cards.avgPerUser, "Avg / person", true)}
+        {card("oa", cards.oaRate + "%", "OA rate", false, "#B8862B")}
         {card("i", cards.interviewRate + "%", "Interview rate", false, "var(--info)")}
         {card("o", cards.offerRate + "%", "Offer rate", false, "var(--success)")}
         {card("r", cards.responseRate + "%", "Response rate", true)}

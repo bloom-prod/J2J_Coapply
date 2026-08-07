@@ -1,6 +1,7 @@
 export const STATUSES = [
   "Want to Apply",
   "Applied",
+  "OA",
   "Phone Screen",
   "Interview",
   "Offer",
@@ -10,11 +11,89 @@ export const STATUSES = [
 ] as const;
 export type Status = (typeof STATUSES)[number];
 
-// Statuses that mean "the company progressed this to an interview stage".
-// Used to set a sticky `reachedInterview` flag so the interview rate reflects
-// applications that ever got this far, not just ones currently sitting there
-// (an app that went Interview -> Rejected should still count).
-export const INTERVIEW_STAGE_STATUSES = ["Interview", "Offer"] as const;
+// Funnel stages in forward progression order. An application "reaches" a stage
+// once its status ever hits that stage or a later one; reaching a stage implies
+// reaching every earlier stage (Applied → OA → Phone Screen → Interview → Offer).
+// Terminal outcomes (Rejected / Ghosted / Withdrawn) and "Want to Apply" sit
+// OUTSIDE the funnel — moving to them never sets a reached flag, it only
+// preserves the flags already collected. This is what makes tracking accurate:
+// an app that went Applied → OA → Interview → Rejected still counts toward the
+// Applied, OA, and Interview buckets, not just Rejected.
+export const FUNNEL_STAGES = ["Applied", "OA", "Phone Screen", "Interview", "Offer"] as const;
+export type FunnelStage = (typeof FUNNEL_STAGES)[number];
+
+// Rank of each status along the funnel. Outcomes / wishlist are intentionally
+// absent (their index resolves to undefined) so they never forward-fill flags.
+export const STATUS_STAGE_INDEX: Record<string, number> = {
+  Applied: 0,
+  OA: 1,
+  "Phone Screen": 2,
+  Interview: 3,
+  Offer: 4,
+};
+
+// Sticky boolean fields stored on each application doc, one per funnel stage.
+// Kept in funnel order so REACHED_FLAG_KEYS[i] corresponds to FUNNEL_STAGES[i].
+export const REACHED_FLAG_KEYS = [
+  "reachedApplied",
+  "reachedOA",
+  "reachedPhoneScreen",
+  "reachedInterview",
+  "reachedOffer",
+] as const;
+export type ReachedFlag = (typeof REACHED_FLAG_KEYS)[number];
+
+/** Sticky flags set when `status` becomes current. Only the flag for the stage
+ *  actually reached is set — we do NOT forward-fill earlier stages, because an
+ *  app can legitimately skip OA or Phone Screen (Applied → Interview directly).
+ *  The one implication we keep is Offer ⇒ Interview (an offer essentially
+ *  always follows an interview). Returns {} for non-funnel statuses so a move
+ *  to Rejected / Ghosted / Withdrawn / Want to Apply never clears prior flags. */
+export function reachedFlagsForStatus(status: string): Partial<Record<ReachedFlag, true>> {
+  switch (status) {
+    case "Applied": return { reachedApplied: true };
+    case "OA": return { reachedOA: true };
+    case "Phone Screen": return { reachedPhoneScreen: true };
+    case "Interview": return { reachedInterview: true };
+    case "Offer": return { reachedInterview: true, reachedOffer: true };
+    default: return {};
+  }
+}
+
+/** Merge a new status's flags into the prior sticky flags (never clears them).
+ *  Applying is a prerequisite for every later stage, so if any later flag is
+ *  set we also set reachedApplied — without assuming the app passed through
+ *  every intermediate stage. Used on PUT to preserve history collected before
+ *  a terminal outcome (e.g. reachedInterview stays true when the app later
+ *  moves to Rejected). */
+export function computeReachedFlags(
+  status: string,
+  existing: Partial<Record<ReachedFlag, boolean>> = {}
+): Partial<Record<ReachedFlag, boolean>> {
+  const merged: Partial<Record<ReachedFlag, boolean>> = {
+    ...existing,
+    ...reachedFlagsForStatus(status),
+  };
+  if (
+    merged.reachedOA || merged.reachedPhoneScreen ||
+    merged.reachedInterview || merged.reachedOffer
+  ) {
+    merged.reachedApplied = true;
+  }
+  return merged;
+}
+
+/** Did a job ever reach funnel stage `stageIndex`? Honors sticky flags first,
+ *  then falls back to the current status's rank so legacy docs without flags
+ *  (e.g. created before the backfill) still count in the funnel. */
+export function reachedStage(
+  job: { status: string } & Partial<Record<ReachedFlag, boolean>>,
+  stageIndex: number
+): boolean {
+  if (job[REACHED_FLAG_KEYS[stageIndex]] === true) return true;
+  const cur = STATUS_STAGE_INDEX[job.status];
+  return cur !== undefined && cur >= stageIndex;
+}
 
 // "Want to Apply" is a wishlist/bookmark state — the user hasn't applied yet.
 // It must not count toward daily application totals, and must not emit an
@@ -61,6 +140,13 @@ export interface Job {
   ownerName: string;
   added: string;
   updated: string;
+  // Sticky funnel-stage flags (see reachedFlagsForStatus). Optional because
+  // legacy docs and optimistic temp rows may not carry them yet.
+  reachedApplied?: boolean;
+  reachedOA?: boolean;
+  reachedPhoneScreen?: boolean;
+  reachedInterview?: boolean;
+  reachedOffer?: boolean;
 }
 
 export interface UserProfile {
@@ -168,7 +254,9 @@ export interface CommunityStats {
   interviewRate: number;
   offerRate: number;
   responseRate: number;
+  oaRate: number;
   statusCounts: Record<string, number>;
+  funnelCounts: Record<string, number>;
   topCompanies: { name: string; count: number }[];
   monthlyVolume: { month: string; count: number }[];
   uidToName: Record<string, string>;

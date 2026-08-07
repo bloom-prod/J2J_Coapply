@@ -59,6 +59,12 @@ function mapDoc(d: QueryDocumentSnapshot<DocumentData>): Job {
     ownerName: "",
     added: tsToISO(x.createdAt),
     updated: tsToISO(x.updatedAt),
+    // Sticky funnel flags — `=== true` keeps legacy/string values out.
+    reachedApplied: x.reachedApplied === true,
+    reachedOA: x.reachedOA === true,
+    reachedPhoneScreen: x.reachedPhoneScreen === true,
+    reachedInterview: x.reachedInterview === true,
+    reachedOffer: x.reachedOffer === true,
   };
 }
 

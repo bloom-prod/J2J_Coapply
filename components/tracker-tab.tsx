@@ -39,7 +39,7 @@ export function TrackerTab({
     const t = jobs.length;
     return {
       total: t,
-      active: jobs.filter((j) => ["Applied", "Phone Screen", "Interview"].includes(j.status)).length,
+      active: jobs.filter((j) => ["Applied", "OA", "Phone Screen", "Interview"].includes(j.status)).length,
       interview: jobs.filter((j) => j.status === "Interview").length,
       offer: jobs.filter((j) => j.status === "Offer").length,
       wantToApply: jobs.filter((j) => j.status === "Want to Apply").length,

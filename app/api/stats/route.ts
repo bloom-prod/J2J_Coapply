@@ -3,23 +3,31 @@ import { adminDb } from "@/lib/firebase-admin";
 import { requireUser, HttpError } from "@/lib/auth-server";
 import { classifyRole } from "@/lib/job-utils";
 import { resolveUserColor } from "@/lib/user-colors";
+import {
+  STATUSES,
+  FUNNEL_STAGES,
+  REACHED_FLAG_KEYS,
+  reachedStage,
+  type ReachedFlag,
+} from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const STATUSES = [
-  "Want to Apply",
-  "Applied",
-  "Phone Screen",
-  "Interview",
-  "Offer",
-  "Rejected",
-  "Ghosted",
-  "Withdrawn",
-];
-
 const rate = (part: number, total: number) =>
   total ? Math.round((part / total) * 100) : 0;
+
+/** Pull the sticky reached* booleans off a raw doc, ignoring anything that
+ *  isn't literally `true` (legacy docs may store them as strings or omit them). */
+function pickReachedFlags(doc: Record<string, unknown>): Partial<Record<ReachedFlag, boolean>> {
+  const out: Partial<Record<ReachedFlag, boolean>> = {};
+  for (const k of REACHED_FLAG_KEYS) {
+    if (doc[k] === true) out[k] = true;
+  }
+  return out;
+}
+
+const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
 function weekMonday(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
@@ -52,11 +60,17 @@ export async function GET(req: Request) {
 
     const statusCounts: Record<string, number> = {};
     STATUSES.forEach((s) => (statusCounts[s] = 0));
+    // funnelCounts = how many apps ever reached each funnel stage (sticky), so
+    // an app that ended in Rejected still counts in every stage it passed
+    // through (Applied / OA / Phone Screen / Interview / Offer).
+    const funnelCounts: Record<string, number> = {};
+    FUNNEL_STAGES.forEach((s) => (funnelCounts[s] = 0));
     const companyCounts: Record<string, number> = {};
     const monthly: Record<string, number> = {};
     const users = new Set<string>();
 
     let total = 0;
+    let oAish = 0;
     let interviewish = 0;
     let offers = 0;
     let responded = 0;
@@ -76,34 +90,45 @@ export async function GET(req: Request) {
     const roleCatUserCounts: Record<string, number> = {};
 
     appsSnap.forEach((doc) => {
-      const j = doc.data() as Record<string, string>;
+      const j = doc.data() as Record<string, unknown>;
       total++;
-      if (j.ownerUid) users.add(j.ownerUid);
+      if (j.ownerUid) users.add(j.ownerUid as string);
 
-      const status = j.status || "Applied";
+      const status = (j.status as string) || "Applied";
       statusCounts[status] = (statusCounts[status] || 0) + 1;
-      // reachedInterview is a sticky flag set once a status ever hits Interview/Offer,
-      // so an app that later moved to Rejected still counts toward the interview rate.
-      if (status === "Interview" || status === "Offer" || (j as unknown as { reachedInterview?: boolean }).reachedInterview) interviewish++;
-      if (status === "Offer") offers++;
-      // Responded = the company took an action (screen/interview/offer/rejection).
-      // Excludes Want to Apply / Applied (no response yet), Ghosted (no response),
-      // and Withdrawn (the applicant's own action, not a company response).
-      if (status === "Phone Screen" || status === "Interview" || status === "Offer" || status === "Rejected") responded++;
 
-      if (j.company) companyCounts[j.company] = (companyCounts[j.company] || 0) + 1;
-      if (j.date) {
-        const m = String(j.date).slice(0, 7);
+      // Sticky funnel flags live on the doc (reachedApplied / reachedOA / ...).
+      // reachedStage honors the flag, then falls back to the current status's
+      // rank so legacy docs without flags still count.
+      const job = { status, ...pickReachedFlags(j) } as { status: string } & Partial<Record<ReachedFlag, boolean>>;
+      for (let i = 0; i < FUNNEL_STAGES.length; i++) {
+        if (reachedStage(job, i)) funnelCounts[FUNNEL_STAGES[i]]++;
+      }
+      if (reachedStage(job, 1)) oAish++;            // ever got an OA
+      if (reachedStage(job, 3)) interviewish++;      // ever reached Interview / Offer
+      if (reachedStage(job, 4)) offers++;             // ever got an Offer
+      // Responded = the company took an action (OA / screen / interview / offer,
+      // or a rejection). Sticky flags catch apps that later went to Ghosted /
+      // Withdrawn after a real response; the explicit Rejected check catches
+      // direct rejections that never set a flag.
+      if (reachedStage(job, 1) || status === "Rejected") responded++;
+
+      const company = str(j.company);
+      const date = str(j.date);
+      const ownerUid = str(j.ownerUid);
+      if (company) companyCounts[company] = (companyCounts[company] || 0) + 1;
+      if (date) {
+        const m = date.slice(0, 7);
         if (/^\d{4}-\d{2}$/.test(m)) monthly[m] = (monthly[m] || 0) + 1;
       }
 
       // Per-user chart data (keyed by resolved display name, never UID)
-      if (j.ownerUid) {
-        const name = resolveName(j.ownerUid);
+      if (ownerUid) {
+        const name = resolveName(ownerUid);
 
         // Weekly per-user (last 12 weeks)
-        if (j.date) {
-          const w = weekMonday(j.date);
+        if (date) {
+          const w = weekMonday(date);
           if (weekKeys.includes(w)) {
             if (!weeklyByUser[w]) weeklyByUser[w] = {};
             weeklyByUser[w][name] = (weeklyByUser[w][name] || 0) + 1;
@@ -112,7 +137,7 @@ export async function GET(req: Request) {
         }
 
         // Role category per-user
-        const cat = j.roleCategory || classifyRole(j.role || "");
+        const cat = str(j.roleCategory) || classifyRole(str(j.role));
         if (cat) {
           if (!roleCatByUser[cat]) roleCatByUser[cat] = {};
           roleCatByUser[cat][name] = (roleCatByUser[cat][name] || 0) + 1;
@@ -167,7 +192,9 @@ export async function GET(req: Request) {
       interviewRate: rate(interviewish, total),
       offerRate: rate(offers, total),
       responseRate: rate(responded, total),
+      oaRate: rate(oAish, total),
       statusCounts,
+      funnelCounts,
       topCompanies,
       monthlyVolume,
       uidToName: Object.fromEntries(uidToName),

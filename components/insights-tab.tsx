@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { STATUSES, type Job } from "@/lib/types";
+import { STATUSES, FUNNEL_STAGES, reachedStage, type Job } from "@/lib/types";
 import { classifyRole } from "@/lib/job-utils";
 import { useDarkMode } from "@/hooks/use-dark-mode";
 import { TimelineTab } from "@/components/timeline-tab";
@@ -17,14 +17,12 @@ function fmtWeekLabel(iso: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-const FUNNEL_STAGES = ["Applied", "Phone Screen", "Interview", "Offer"] as const;
-const STAGE_ORDER: Record<string, number> = { Applied: 0, "Phone Screen": 1, Interview: 2, Offer: 3 };
-
 const HEAT_LIGHT = ["#EDF2ED", "#F9D0E3", "#F2AECF", "#D4537E", "#A32059"];
 const HEAT_DARK  = ["#1E1D26", "#3D2135", "#6B3A56", "#E07BA0", "#F0A8C0"];
 
-const FUNNEL_LIGHT = ["#185FA5", "#6B9E6B", "#D4537E", "#3B6D11"];
-const FUNNEL_DARK  = ["#78AEDE", "#7BB87B", "#E07BA0", "#7BC47B"];
+// One color per funnel stage (Applied, OA, Phone Screen, Interview, Offer).
+const FUNNEL_LIGHT = ["#185FA5", "#DDB060", "#6B9E6B", "#D4537E", "#3B6D11"];
+const FUNNEL_DARK  = ["#78AEDE", "#E0B46A", "#7BB87B", "#E07BA0", "#7BC47B"];
 
 function heatColor(count: number, dark: boolean): string {
   const scale = dark ? HEAT_DARK : HEAT_LIGHT;
@@ -80,9 +78,12 @@ export function InsightsTab({ jobs, onEdit }: { jobs: Job[]; onEdit: (j: Job) =>
     }
     const maxW = Math.max(1, ...weeks.map((x) => x.count));
 
-    // Personal funnel: how many reached at least each stage
-    const funnelReached = FUNNEL_STAGES.map((s) =>
-      jobs.filter((j) => (STAGE_ORDER[j.status] ?? -1) >= STAGE_ORDER[s]).length
+    // Personal funnel: how many reached at least each stage. Uses the sticky
+    // reached* flags so a rejected app still counts in every stage it passed
+    // through (Applied → OA → Interview → Rejected = 1 applied, 1 OA, 1
+    // interview). Falls back to current-status rank for legacy docs.
+    const funnelReached = FUNNEL_STAGES.map((s, i) =>
+      jobs.filter((j) => reachedStage(j, i)).length
     );
 
     // Heatmap: last 91 days (13 weeks)
@@ -114,8 +115,11 @@ export function InsightsTab({ jobs, onEdit }: { jobs: Job[]; onEdit: (j: Job) =>
       weeks, maxW,
       funnelReached,
       heatGrid,
-      conv: t ? Math.round((jobs.filter((j) => ["Interview", "Offer"].includes(j.status)).length / t) * 100) : 0,
-      ofr: t ? Math.round((jobs.filter((j) => j.status === "Offer").length / t) * 100) : 0,
+      // Rates use sticky flags ("ever reached X") so a rejection after an
+      // interview/OA still counts toward interview / OA / offer rates.
+      oa: t ? Math.round((jobs.filter((j) => reachedStage(j, 1)).length / t) * 100) : 0,
+      conv: t ? Math.round((jobs.filter((j) => reachedStage(j, 3)).length / t) * 100) : 0,
+      ofr: t ? Math.round((jobs.filter((j) => reachedStage(j, 4)).length / t) * 100) : 0,
       rej: t ? Math.round((jobs.filter((j) => j.status === "Rejected").length / t) * 100) : 0,
       avg: months.length ? Math.round(months.reduce((a, x) => a + x[1], 0) / months.length) : 0,
     };
@@ -144,6 +148,7 @@ export function InsightsTab({ jobs, onEdit }: { jobs: Job[]; onEdit: (j: Job) =>
       <div className="ic">
         <div className="it">Key metrics</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div><div className="bm">{data.oa}%</div><div className="ml">OA rate</div></div>
           <div><div className="bm">{data.conv}%</div><div className="ml">interview rate</div></div>
           <div><div className="bm sage">{data.ofr}%</div><div className="ml">offer rate</div></div>
           <div><div className="bm" style={{ color: "var(--danger)" }}>{data.rej}%</div><div className="ml">rejection rate</div></div>

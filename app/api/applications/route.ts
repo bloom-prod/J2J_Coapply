@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase-admin";
 import { requireUser, HttpError } from "@/lib/auth-server";
-import { STATUSES, INTERVIEW_STAGE_STATUSES, NOT_YET_APPLIED_STATUS } from "@/lib/types";
+import { STATUSES, NOT_YET_APPLIED_STATUS, reachedFlagsForStatus, computeReachedFlags, type ReachedFlag } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -62,12 +62,15 @@ export async function POST(req: Request) {
 
     const status = (data.status as string) || "Applied";
     const now = FieldValue.serverTimestamp();
+    // Seed sticky funnel flags from the starting status so a newly-created
+    // "Interview" row immediately counts in the interview funnel/rate.
+    const reached = reachedFlagsForStatus(status) as Record<ReachedFlag, true>;
     const ref = await adminDb.collection(APPLICATIONS).add({
       ...data,
       status,
       starred: data.starred === true,
       ownerUid: user.uid,
-      reachedInterview: INTERVIEW_STAGE_STATUSES.includes(status as (typeof INTERVIEW_STAGE_STATUSES)[number]),
+      ...reached,
       createdAt: now,
       updatedAt: now,
     });
@@ -110,10 +113,12 @@ export async function PUT(req: Request) {
     const data = pickFields(body);
     const newStatus = data.status as string | undefined;
     const update: Record<string, unknown> = { ...data, updatedAt: FieldValue.serverTimestamp() };
-    // Sticky flag: once an application reaches an interview stage, it stays
-    // "interview-ish" for reporting even if it's later rejected/ghosted/withdrawn.
-    if (newStatus && INTERVIEW_STAGE_STATUSES.includes(newStatus as (typeof INTERVIEW_STAGE_STATUSES)[number])) {
-      update.reachedInterview = true;
+    // Sticky flags: merge the new status's flags into the ones already on the
+    // doc so a later Rejected / Ghosted / Withdrawn never erases the funnel
+    // stages the app passed through (Applied → OA → Interview → Rejected stays
+    // counted as 1 applied, 1 OA, 1 interview, plus the rejection).
+    if (newStatus) {
+      Object.assign(update, computeReachedFlags(newStatus, existing as Partial<Record<ReachedFlag, boolean>>));
     }
     await ref.update(update);
 
