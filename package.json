@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node tests/shame-wall.test.mjs",
+    "test:db": "tsx tests/db-integration.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1106.0",

@@ -14,10 +14,37 @@
  */
 
 const path = require("path");
+const fs = require("fs");
+const os = require("os");
 try {
   process.loadEnvFile(path.join(__dirname, ".env"));
 } catch {
   /* .env optional; vars may come from the process env instead */
+}
+
+// ── Shared app log (~/logs/jobless.logs) ────────────────────────────────
+// Append JSONL lines to the same file the Next app writes (see lib/logger.ts),
+// so cron email activity appears alongside auth/data events. Best-effort and
+// never throws; falls back to stderr if the file can't be written.
+function logFilePath() {
+  const env = process.env.LOG_FILE;
+  return env ? env.replace(/^~\//, `${os.homedir()}/`) : `${os.homedir()}/logs/jobless.logs`;
+}
+const LOG_PATH = logFilePath();
+function logEvent(level, event, fields) {
+  const line = JSON.stringify({
+    ts: new Date().toISOString(),
+    level,
+    event,
+    service: "daily-email",
+    ...(fields || {}),
+  });
+  try {
+    fs.mkdirSync(path.dirname(LOG_PATH), { recursive: true });
+    fs.appendFileSync(LOG_PATH, line + "\n");
+  } catch (e) {
+    console.error(`[daily-email] log write failed: ${e && e.message ? e.message : e}`);
+  }
 }
 
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -247,6 +274,7 @@ async function main() {
   const { dayStart, dayEnd } = dayRange(yesterday);
 
   console.log(`[daily-email] Reporting on: ${yesterday} ${DRY_RUN ? "(DRY RUN — no mail sent)" : ""}`);
+  logEvent("info", "cron.start", { reportDate: yesterday, dryRun: DRY_RUN });
 
   const [users, activities, jobBoard] = await Promise.all([
     sql`
@@ -262,6 +290,7 @@ async function main() {
 
   const summaryByUser = summarizeActivity(activities);
   console.log(`[daily-email] ${users.length} users, ${activities.length} activity rows, ${jobBoard.length} jobs on the board`);
+  logEvent("info", "cron.inputs", { users: users.length, activityRows: activities.length, jobs: jobBoard.length });
   if (!jobBoard.length) console.warn("[daily-email] No jobboard posts — emails will have an empty jobs table");
 
   let sent = 0;
@@ -281,6 +310,7 @@ async function main() {
       console.log(`  [dry] -> ${user.email} (${name}) | ${summary}`);
       console.log(`        subject: ${content.subject}`);
       console.log(`        note: ${content.note}`);
+      logEvent("info", "email.preview", { to: user.email, name, subject: content.subject });
       continue;
     }
 
@@ -298,14 +328,17 @@ async function main() {
         html,
       });
       console.log(`  Sent -> ${user.email} (${name})`);
+      logEvent("info", "email.sent", { to: user.email, name, subject: content.subject, summary });
       sent++;
     } catch (err) {
       console.error(`  FAILED -> ${user.email}:`, err.message);
+      logEvent("error", "email.failed", { to: user.email, name, err: err.message });
       failed++;
     }
   }
 
   console.log(`\n[daily-email] Done! Sent: ${sent}, Failed: ${failed}`);
+  logEvent("info", "cron.done", { sent, failed });
   await sql.end();
 }
 

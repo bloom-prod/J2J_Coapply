@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { signToken, verifyPassword } from "@/lib/jwt";
 import { rateLimiter, clientIp, RATE_LIMIT_WINDOW_MS, IP_LIMITS } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ export async function POST(req: Request) {
 
     // Per-IP budget to blunt password brute-forcing.
     if (!rateLimiter.hit(`login:${clientIp(req)}`, IP_LIMITS.login, RATE_LIMIT_WINDOW_MS)) {
+      logger.warn("auth.login.rate_limited", { email: String(email).trim().toLowerCase(), ip: clientIp(req) });
       return NextResponse.json(
         { ok: false, error: "Too many attempts. Please wait and try again in 15 minutes." },
         { status: 429 }
@@ -28,13 +30,16 @@ export async function POST(req: Request) {
     });
     // Constant-ish response whether the email exists or not.
     if (!row || !row.passwordHash) {
+      logger.warn("auth.login.failed", { reason: "no_account", email: String(email).trim().toLowerCase(), ip: clientIp(req) });
       return NextResponse.json({ ok: false, error: "Email or password is incorrect." }, { status: 401 });
     }
     const ok = await verifyPassword(password, row.passwordHash);
     if (!ok) {
+      logger.warn("auth.login.failed", { reason: "bad_password", uid: row.id, ip: clientIp(req) });
       return NextResponse.json({ ok: false, error: "Email or password is incorrect." }, { status: 401 });
     }
     if (!row.approved) {
+      logger.warn("auth.login.pending", { uid: row.id, email: row.email, ip: clientIp(req) });
       return NextResponse.json(
         { ok: false, error: "Your account is awaiting admin approval." },
         { status: 403 }
@@ -42,6 +47,7 @@ export async function POST(req: Request) {
     }
 
     const token = await signToken({ id: row.id, email: row.email, isAdmin: row.isAdmin });
+    logger.info("auth.login.ok", { uid: row.id, email: row.email, isAdmin: row.isAdmin, ip: clientIp(req) });
     return NextResponse.json({
       ok: true,
       token,

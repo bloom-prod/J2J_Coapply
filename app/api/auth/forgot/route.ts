@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { users, passwordResets } from "@/db/schema";
 import { sendOtpEmail } from "@/lib/mailer";
 import { rateLimiter, clientIp, RATE_LIMIT_WINDOW_MS, IP_LIMITS } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,12 +23,14 @@ export async function POST(req: Request) {
   // source, and a per-address budget so an attacker can't spam a victim.
   const ip = clientIp(req);
   if (!rateLimiter.hit(`forgot:${ip}`, IP_LIMITS.forgot, RATE_LIMIT_WINDOW_MS)) {
+    logger.warn("auth.forgot.rate_limited", { ip });
     return NextResponse.json(
       { ok: false, error: "Too many requests. Please wait and try again in 15 minutes." },
       { status: 429 }
     );
   }
   if (!rateLimiter.hit(`forgot-email:${clean}`, IP_LIMITS.forgotPerEmail, RATE_LIMIT_WINDOW_MS)) {
+    logger.warn("auth.forgot.rate_limited", { email: clean, ip });
     return NextResponse.json(
       { ok: false, error: "Too many requests for this address. Please wait and try again." },
       { status: 429 }
@@ -60,9 +63,10 @@ export async function POST(req: Request) {
 
     try {
       await sendOtpEmail(clean, otp);
+      logger.info("auth.forgot.sent", { email: clean, ip });
     } catch (e) {
       // Deliberately indistinguishable from success — see note above.
-      console.error("Failed to send OTP email:", e);
+      logger.error("auth.forgot.send_failed", { email: clean, err: e instanceof Error ? e.message : String(e) });
     }
   }
 

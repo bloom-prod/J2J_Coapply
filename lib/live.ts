@@ -1,4 +1,5 @@
 import postgres from "postgres";
+import { logger } from "./logger";
 
 // Postgres LISTEN/NOTIFY pub/sub so clients get pushed refresh signals instead
 // of hammering the DB with a 15s whole-table poll.
@@ -27,8 +28,9 @@ export function notifyChanges(payload = "refresh") {
     const sql = getNotifier();
     void sql
       .notify(LIVE_CHANNEL, payload)
-      .catch((e) => console.error("[live] NOTIFY failed:", e));
+      .then(() => logger.info("db.write", { table: payload }))
+      .catch((e: unknown) => logger.error("db.write_failed", { table: payload, err: e instanceof Error ? e.message : String(e) }));
   } catch (e) {
-    console.error("[live] notify error:", e);
+    logger.error("db.notify_error", { err: e instanceof Error ? e.message : String(e) });
   }
 }

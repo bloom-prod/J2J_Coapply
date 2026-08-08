@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Log only state transitions so the log stays quiet while maintenance is off.
+let lastOn: boolean | null = null;
 
 // Runtime maintenance toggle. middleware (Edge) can't read process.env at
 // request time without a rebuild, so it consults this route instead — it runs
@@ -11,5 +15,9 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const raw = process.env.MAINTENANCE_MODE || "";
   const on = raw === "true" || raw === "1";
+  if (lastOn !== on) {
+    logger.info(on ? "maintenance.on" : "maintenance.off", { on });
+    lastOn = on;
+  }
   return NextResponse.json({ on });
 }

@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { users, passwordResets } from "@/db/schema";
 import { hashPassword } from "@/lib/jwt";
 import { rateLimiter, clientIp, RATE_LIMIT_WINDOW_MS, IP_LIMITS } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,6 +31,7 @@ export async function POST(req: Request) {
   const ip = clientIp(req);
   const attemptsKey = `reset:${clean}:${ip}`;
   if (!rateLimiter.hit(attemptsKey, IP_LIMITS.resetAttempts, RATE_LIMIT_WINDOW_MS)) {
+    logger.warn("auth.reset.locked", { email: clean, ip });
     return NextResponse.json(
       { ok: false, error: "Too many incorrect codes. Please wait and try again in 15 minutes." },
       { status: 429 }
@@ -51,11 +53,13 @@ export async function POST(req: Request) {
   }
   const matches = await bcrypt.compare(otpStr, reset.otpHash);
   if (!matches) {
+    logger.warn("auth.reset.wrong_code", { email: clean, ip });
     return NextResponse.json({ ok: false, error: "Invalid or expired code." }, { status: 400 });
   }
 
   // Success — allow further attempts to start fresh if this address is re-used.
   rateLimiter.clear(attemptsKey);
+  logger.info("auth.reset.done", { email: clean, ip });
 
   const passwordHash = await hashPassword(pass);
   await db.update(users).set({ passwordHash, updatedAt: new Date() }).where(eq(users.id, user.id));

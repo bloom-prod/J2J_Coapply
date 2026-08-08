@@ -1,6 +1,7 @@
 import postgres from "postgres";
 import { verifyToken } from "@/lib/jwt";
 import { LIVE_CHANNEL } from "@/lib/live";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +23,8 @@ export async function GET(req: Request) {
   }
   if (!payload.sub) return new Response("Unauthorized", { status: 401 });
 
+  logger.info("sse.connect", { uid: payload.sub });
+
   const url = process.env.DATABASE_URL;
   if (!url) return new Response("Server error", { status: 500 });
   const sql = postgres(url, { max: 1 });
@@ -38,6 +41,7 @@ export async function GET(req: Request) {
       const cleanup = () => {
         if (finished) return;
         finished = true;
+        logger.info("sse.close", { uid: payload.sub });
         try {
           if (ping) clearInterval(ping);
           if (unlisten) unlisten();

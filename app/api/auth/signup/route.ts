@@ -5,6 +5,7 @@ import { users } from "@/db/schema";
 import { hashPassword } from "@/lib/jwt";
 import { pickColorForNewUser } from "@/lib/user-colors";
 import { rateLimiter, clientIp, RATE_LIMIT_WINDOW_MS, IP_LIMITS } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     if (!rateLimiter.hit(`signup:${clientIp(req)}`, IP_LIMITS.signup, RATE_LIMIT_WINDOW_MS)) {
+      logger.warn("auth.signup.rate_limited", { ip: clientIp(req) });
       return NextResponse.json(
         { ok: false, error: "Too many signups. Please wait and try again in 15 minutes." },
         { status: 429 }
@@ -29,6 +31,7 @@ export async function POST(req: Request) {
 
     const existing = await db.query.users.findFirst({ where: eq(users.email, cleanEmail) });
     if (existing) {
+      logger.warn("auth.signup.duplicate", { email: cleanEmail, ip: clientIp(req) });
       return NextResponse.json({ ok: false, error: "That email already has an account — try logging in." }, { status: 409 });
     }
 
@@ -47,6 +50,7 @@ export async function POST(req: Request) {
       approved: false,
     });
 
+    logger.info("auth.signup.created", { email: cleanEmail, ip: clientIp(req) });
     return NextResponse.json({ ok: true, pendingApproval: true });
   } catch (e) {
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : "Signup failed." }, { status: 500 });
