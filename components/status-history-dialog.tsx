@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -34,6 +34,12 @@ export function StatusHistoryDialog({
 }) {
   const [rows, setRows] = useState<Entry[]>([{ date: todayISO(), status: "Applied" }]);
   const [busy, setBusy] = useState(false);
+
+  // Reset the default row to the application's actual applied date (not today)
+  // whenever the dialog is opened for a different application.
+  useEffect(() => {
+    if (job) setRows([{ date: job.date || todayISO(), status: "Applied" }]);
+  }, [job?.id]);
 
   if (job === null) return null;
 

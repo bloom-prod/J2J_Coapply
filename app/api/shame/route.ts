@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, and, gte, lt, sql, ne } from "drizzle-orm";
+import { eq, and, gte, lt, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { applications, users, dailyRoasts } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
@@ -229,7 +229,7 @@ async function writeRoasts(dateStr: string, roastByUid: Record<string, string>, 
           set: {
             roastText,
             appsCount: countMap[userId] || 0,
-            generatedAt: sql`${new Date()}`,
+            generatedAt: new Date(),
           },
         });
     }
