@@ -51,11 +51,6 @@ export function fmtDate(d: string): string {
   return `${MONTHS[parseInt(m)]} ${parseInt(day)}, ${y}`;
 }
 
-export function fmtMonth(m: string): string {
-  const [y, mo] = m.split("-");
-  return `${MONTHS[parseInt(mo)]}'${y.slice(2)}`;
-}
-
 export function timeAgo(date: Date | null): string {
   if (!date) return "just now";
   const s = Math.floor((Date.now() - date.getTime()) / 1000);

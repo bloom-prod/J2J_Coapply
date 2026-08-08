@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { applications, applicationUserStatus } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
 import { logActivity, namesByIds } from "@/db/activity";
 import { statusToEnum, enumToStatus, priorityToEnum, enumToPriority, roleCategoryToEnum, enumToRoleCategory } from "@/lib/enums";
-import { STATUSES, NOT_YET_APPLIED_STATUS } from "@/lib/types";
+import { STATUSES, NOT_YET_APPLIED_STATUS, reachedFlagsForStatus, type ReachedFlag } from "@/lib/types";
 import { isSafeHttpUrl } from "@/lib/safe-url";
 
 export const runtime = "nodejs";
@@ -47,12 +47,46 @@ function cleanInput(input: Record<string, unknown>) {
 }
 
 // List all applications (community view), newest first, with owner names.
+// Sticky per-stage funnel flags are recovered from the status log (same
+// approach as /api/stats) so an app that reached Interview then went Rejected
+// still counts toward the OA/Interview buckets in the community/insights tabs.
 export async function GET(req: Request) {
   try {
     await requireUser(req);
     const rows = await db.select().from(applications).orderBy(desc(applications.createdAt));
+
+    const ids = rows.map((r) => r.applicationId);
+    const logs = ids.length
+      ? await db
+          .select({
+            applicationId: applicationUserStatus.applicationId,
+            status: applicationUserStatus.status,
+          })
+          .from(applicationUserStatus)
+          .where(inArray(applicationUserStatus.applicationId, ids))
+      : [];
+    const history = new Map<string, Set<string>>();
+    for (const l of logs) {
+      if (!history.has(l.applicationId)) history.set(l.applicationId, new Set());
+      history.get(l.applicationId)!.add(l.status);
+    }
+    const flagsFor = (applicationId: string): Partial<Record<ReachedFlag, boolean>> => {
+      const flags: Partial<Record<ReachedFlag, boolean>> = {};
+      const seen = history.get(applicationId);
+      if (seen) {
+        for (const se of seen) {
+          if (!se) continue;
+          const disp = enumToStatus(se);
+          if (disp) Object.assign(flags, reachedFlagsForStatus(disp));
+        }
+      }
+      return flags;
+    };
+
     const nameById = await namesByIds(db, rows.map((r) => r.applicantId));
-    const list = rows.map((r) => ({
+    const list = rows.map((r) => {
+      const flags = flagsFor(r.applicationId);
+      return {
       id: r.applicationId,
       company: r.company || "",
       role: r.role || "",
@@ -67,11 +101,17 @@ export async function GET(req: Request) {
       followup: r.followUp || "",
       notes: r.notes || "",
       starred: r.starred === true,
+      reachedApplied: flags.reachedApplied === true,
+      reachedOA: flags.reachedOA === true,
+      reachedPhoneScreen: flags.reachedPhoneScreen === true,
+      reachedInterview: flags.reachedInterview === true,
+      reachedOffer: flags.reachedOffer === true,
       ownerUid: r.applicantId,
       ownerName: nameById[r.applicantId] || "",
       added: r.createdAt ? r.createdAt.toISOString() : "",
       updated: r.updatedAt ? r.updatedAt.toISOString() : "",
-    }));
+      };
+    });
     return NextResponse.json({ ok: true, applications: list });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);

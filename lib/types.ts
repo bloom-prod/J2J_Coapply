@@ -60,29 +60,6 @@ export function reachedFlagsForStatus(status: string): Partial<Record<ReachedFla
   }
 }
 
-/** Merge a new status's flags into the prior sticky flags (never clears them).
- *  Applying is a prerequisite for every later stage, so if any later flag is
- *  set we also set reachedApplied — without assuming the app passed through
- *  every intermediate stage. Used on PUT to preserve history collected before
- *  a terminal outcome (e.g. reachedInterview stays true when the app later
- *  moves to Rejected). */
-export function computeReachedFlags(
-  status: string,
-  existing: Partial<Record<ReachedFlag, boolean>> = {}
-): Partial<Record<ReachedFlag, boolean>> {
-  const merged: Partial<Record<ReachedFlag, boolean>> = {
-    ...existing,
-    ...reachedFlagsForStatus(status),
-  };
-  if (
-    merged.reachedOA || merged.reachedPhoneScreen ||
-    merged.reachedInterview || merged.reachedOffer
-  ) {
-    merged.reachedApplied = true;
-  }
-  return merged;
-}
-
 /** Did a job ever reach funnel stage `stageIndex`? Honors sticky flags first,
  *  then falls back to the current status's rank so legacy docs without flags
  *  (e.g. created before the backfill) still count in the funnel. */

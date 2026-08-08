@@ -10,12 +10,11 @@ export const dynamic = "force-dynamic";
 
 // uid -> name/color resolution for the whole group.
 //
-// This MUST stay a server endpoint. A client-side onSnapshot on the profiles
-// collection is rejected by the deployed Firestore rules ("Missing or
-// insufficient permissions"), which silently leaves uidNameMap empty and makes
-// every name in the feed and community views render as "Someone". That
-// regression has been introduced twice now — see commit 07d6514. Don't swap
-// this back to a client listener.
+// This MUST stay a server endpoint. The old Firestore-backed implementation
+// had a regression where a client-side onSnapshot left uidNameMap empty and
+// made every name in the feed and community views render as "Someone" (it was
+// introduced twice — see commit 07d6514). Resolution lives on the server now;
+// don't move it to a client listener.
 export async function GET(req: Request) {
   try {
     await requireUser(req);

@@ -28,6 +28,11 @@ interface ApiApplication {
   followup: string;
   notes: string;
   starred: boolean;
+  reachedApplied: boolean;
+  reachedOA: boolean;
+  reachedPhoneScreen: boolean;
+  reachedInterview: boolean;
+  reachedOffer: boolean;
   ownerUid: string;
   ownerName: string;
   added: string;
@@ -50,16 +55,17 @@ function mapDoc(x: ApiApplication): Job {
     followup: x.followup || "",
     notes: x.notes || "",
     starred: x.starred === true,
+    // Sticky funnel flags come from the server (recovered from the status
+    // log, same as /api/stats) so the community/insights buckets agree.
+    reachedApplied: x.reachedApplied === true,
+    reachedOA: x.reachedOA === true,
+    reachedPhoneScreen: x.reachedPhoneScreen === true,
+    reachedInterview: x.reachedInterview === true,
+    reachedOffer: x.reachedOffer === true,
     ownerUid: x.ownerUid || "",
     ownerName: x.ownerName || "",
     added: x.added || "",
     updated: x.updated || "",
-    // Sticky funnel flags aren't returned by the REST endpoint.
-    reachedApplied: false,
-    reachedOA: false,
-    reachedPhoneScreen: false,
-    reachedInterview: false,
-    reachedOffer: false,
   };
 }
 

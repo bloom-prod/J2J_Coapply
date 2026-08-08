@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { eq, and, gte, lt, ne } from "drizzle-orm";
+import { eq, and, lt, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { applications, users, dailyRoasts } from "@/db/schema";
+import { users, dailyRoasts, applicationUserStatus } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
 import { generateRoasts, generateSingleRoast } from "@/lib/gemini";
 import { NOT_YET_APPLIED_STATUS } from "@/lib/types";
@@ -113,16 +113,21 @@ export async function GET(req: Request) {
     const { dateStr: today, dayStart, dayEnd } = effectiveToday();
     console.log("[shame] effectiveToday:", today, "| force:", forceRegen);
 
-    let appsRows, userRows;
+    let statusRows, userRows;
     try {
-      [appsRows, userRows] = await Promise.all([
+      const wantEnum = statusToEnum(NOT_YET_APPLIED_STATUS)!;
+      [statusRows, userRows] = await Promise.all([
         db
-          .select()
-          .from(applications)
+          .select({
+            applicationId: applicationUserStatus.applicationId,
+            userId: applicationUserStatus.changedById,
+            changedAt: applicationUserStatus.changedAt,
+          })
+          .from(applicationUserStatus)
           .where(
             and(
-              gte(applications.createdAt, dayStart),
-              lt(applications.createdAt, dayEnd)
+              ne(applicationUserStatus.status, wantEnum),
+              lt(applicationUserStatus.changedAt, dayEnd)
             )
           ),
         db
@@ -135,13 +140,29 @@ export async function GET(req: Request) {
       throw dbErr;
     }
 
-    // Count applications per user for today — exclude "Want to Apply" (not yet applied)
+    // Count the day's REAL applications: attribute each application to the day
+    // its status first left "Want to Apply" (the earliest non-wishlist status
+    // event), not its createdAt. A bookmark saved yesterday and flipped to
+    // "Applied" today is counted today; a bookmark created today is excluded
+    // until it actually becomes an application. Counting every status row would
+    // double-count apps that moved through several stages today, so we keep only
+    // each application's earliest such event.
+    const firstReal = new Map<string, { userId: string; at: number }>();
+    statusRows.forEach((r) => {
+      if (!r.changedAt) return;
+      const at = r.changedAt.getTime();
+      const existing = firstReal.get(r.applicationId);
+      if (!existing || at < existing.at) {
+        firstReal.set(r.applicationId, { userId: r.userId, at });
+      }
+    });
+    const dayStartMs = dayStart.getTime();
+    const dayEndMs = dayEnd.getTime();
     const countsByUid: Record<string, number> = {};
-    appsRows.forEach((doc) => {
-      const userId = doc.applicantId as string;
-      if (!userId) return;
-      if (doc.status === statusToEnum(NOT_YET_APPLIED_STATUS)) return;
-      countsByUid[userId] = (countsByUid[userId] || 0) + 1;
+    firstReal.forEach((v) => {
+      if (v.at >= dayStartMs && v.at < dayEndMs) {
+        countsByUid[v.userId] = (countsByUid[v.userId] || 0) + 1;
+      }
     });
 
     const userList: { uid: string; name: string }[] = userRows.map((u) => ({
