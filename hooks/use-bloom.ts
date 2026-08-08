@@ -178,7 +178,28 @@ export function useBloom() {
     }
 
     refresh();
-    const interval = setInterval(refresh, 15000);
+
+    // Push refreshes over SSE instead of polling every 15s (see /api/live).
+    // EventSource auto-reconnects; a slow fallback poll keeps data fresh if
+    // push is ever unavailable. On each `refresh` event we refetch the (now on
+    // push) endpoints once, not on a timer.
+    let es: EventSource | null = null;
+    let esToken = "";
+    const openLive = () => {
+      const token = getToken();
+      if (!token || token === esToken) return;
+      esToken = token;
+      es?.close();
+      try {
+        es = new EventSource(`/api/live?token=${encodeURIComponent(token)}`);
+        es.addEventListener("refresh", () => { if (!cancelled) refresh(); });
+        es.onerror = () => { /* EventSource reconnects automatically */ };
+      } catch {
+        es = null;
+      }
+    };
+    openLive();
+    const fallbackPoll = setInterval(refresh, 60000);
 
     // uid→name/color map comes from the server. We fetch it alongside the
     // jobs/feed poll so the loader only clears after names are resolved.
@@ -216,7 +237,8 @@ export function useBloom() {
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      clearInterval(fallbackPoll);
+      es?.close();
       window.removeEventListener("focus", onFocus);
     };
   }, [user]);

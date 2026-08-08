@@ -7,6 +7,7 @@ import { logActivity, namesByIds } from "@/db/activity";
 import { statusToEnum, enumToStatus, priorityToEnum, enumToPriority, roleCategoryToEnum, enumToRoleCategory } from "@/lib/enums";
 import { STATUSES, NOT_YET_APPLIED_STATUS, reachedFlagsForStatus, type ReachedFlag } from "@/lib/types";
 import { isSafeHttpUrl } from "@/lib/safe-url";
+import { notifyChanges } from "@/lib/live";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -179,6 +180,7 @@ export async function POST(req: Request) {
       return app;
     });
 
+    notifyChanges("applications");
     return NextResponse.json({ ok: true, id: record.applicationId });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);
@@ -251,6 +253,7 @@ export async function PUT(req: Request) {
       }
     });
 
+    notifyChanges("applications");
     return NextResponse.json({ ok: true, id });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);
@@ -274,6 +277,7 @@ export async function DELETE(req: Request) {
       throw new HttpError(403, "You can only delete your own applications");
     }
     await db.delete(applications).where(eq(applications.applicationId, id));
+    notifyChanges("applications");
     return NextResponse.json({ ok: true, id });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);

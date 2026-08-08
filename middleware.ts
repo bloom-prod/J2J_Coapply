@@ -3,10 +3,46 @@ import type { NextRequest } from "next/server";
 
 // ── Maintenance mode ──────────────────────────────────────────────────────
 // Serves a friendly maintenance page for every request and short-circuits all
-// API routes so we stop consuming Firestore read quota while the backend is
-// being worked on. Flip MAINTENANCE to false (and redeploy) to bring the site
-// back up.
-const MAINTENANCE = false;
+// API routes. Unlike a hardcoded constant, this is a RUNTIME toggle: Next 14
+// inlines statically-referenced process.env in Edge middleware at build time,
+// so we read the flag from the /api/maintenance route instead. That route runs
+// on the Node runtime and reads MAINTENANCE_MODE fresh per request (and is
+// excluded from this middleware's matcher so it never short-circuits itself).
+// Flipping MAINTENANCE_MODE=true|1 (or unsetting it) + `docker compose restart`
+// brings the site up/down without a rebuild. We cache the answer briefly to
+// avoid hammering the flag route; the middleware fails OPEN (site stays up) if
+// the flag can't be reached.
+
+const FLAG_TTL_MS = 30 * 1000;
+let cachedOn = false;
+let lastCheck = 0;
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function maintenanceIsOn(req: NextRequest): Promise<boolean> {
+  const now = Date.now();
+  if (now - lastCheck < FLAG_TTL_MS) return cachedOn;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
+    try {
+      const res = await fetch(`${req.nextUrl.origin}/api/maintenance`, {
+        headers: { Accept: "application/json" },
+        signal: controller.signal,
+      });
+      const d = await res.json().catch(() => null);
+      cachedOn = Boolean(d && d.on);
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    cachedOn = false; // fail open — don't take the site down on a hiccup
+  }
+  lastCheck = now;
+  return cachedOn;
+}
 
 const PAGE = `<!doctype html>
 <html lang="en">
@@ -52,8 +88,9 @@ const PAGE = `<!doctype html>
 </body>
 </html>`;
 
-export function middleware(req: NextRequest) {
-  if (!MAINTENANCE) return NextResponse.next();
+export async function middleware(req: NextRequest) {
+  const maintenance = await maintenanceIsOn(req);
+  if (!maintenance) return NextResponse.next();
 
   const { pathname } = req.nextUrl;
 
@@ -84,5 +121,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image).*)"],
+  matcher: ["/((?!_next/static|_next/image|api/maintenance).*)"],
 };

@@ -6,6 +6,10 @@ node_modules
 *.md
 .env.local
 .env*.local
+# Keep all secrets out of the builder stage image layers (COPY . . in Dockerfile).
+# The runner gets env at runtime from docker-compose env_file instead.
+.env
+.env.*
 # Cron env files carry secrets — pass them via compose env_file at runtime,
 # don't bake them into the image.
 cron/*/.env

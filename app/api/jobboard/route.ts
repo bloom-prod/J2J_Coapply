@@ -5,6 +5,7 @@ import { jobboard } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
 import { logActivity, namesByIds } from "@/db/activity";
 import { isSafeHttpUrl } from "@/lib/safe-url";
+import { notifyChanges } from "@/lib/live";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -84,6 +85,7 @@ export async function POST(req: Request) {
       return post;
     });
 
+    notifyChanges("jobboard");
     return NextResponse.json({ ok: true, id: record.postId });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);
@@ -104,6 +106,7 @@ export async function DELETE(req: Request) {
     if (!existing) return NextResponse.json({ ok: true });
     if (existing.postedBy !== user.id) throw new HttpError(403, "You can only delete your own posts");
     await db.delete(jobboard).where(eq(jobboard.postId, id));
+    notifyChanges("jobboard");
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);

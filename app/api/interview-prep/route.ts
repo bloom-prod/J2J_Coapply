@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { interviewPrep } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
 import { namesByIds } from "@/db/activity";
+import { notifyChanges } from "@/lib/live";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,6 +69,7 @@ export async function POST(req: Request) {
       })
       .returning();
 
+    notifyChanges("interview-prep");
     return NextResponse.json({ ok: true, id: post.postId });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);
@@ -88,6 +90,7 @@ export async function DELETE(req: Request) {
     if (!existing) return NextResponse.json({ ok: true });
     if (existing.creatorId !== user.id) throw new HttpError(403, "You can only delete your own posts");
     await db.delete(interviewPrep).where(eq(interviewPrep.postId, id));
+    notifyChanges("interview-prep");
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);

@@ -6,6 +6,7 @@ import { resumes } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
 import { logActivity, namesByIds } from "@/db/activity";
 import { ensureBucket, putResume, deleteResume } from "@/lib/s3";
+import { notifyChanges } from "@/lib/live";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -86,6 +87,7 @@ export async function POST(req: Request) {
       });
     });
 
+    notifyChanges("resumes");
     return NextResponse.json({
       ok: true,
       resume: {
@@ -125,6 +127,7 @@ export async function DELETE(req: Request) {
       });
     });
     await deleteResume(row.filePath);
+    notifyChanges("resumes");
 
     return NextResponse.json({ ok: true });
   } catch (err) {
