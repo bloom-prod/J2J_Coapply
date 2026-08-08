@@ -1,8 +1,11 @@
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import { FieldValue, WriteBatch } from "firebase-admin/firestore";
-import { adminDb } from "@/lib/firebase-admin";
+import { db } from "@/db";
+import { applications, applicationUserStatus } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
-import { STATUSES, NOT_YET_APPLIED_STATUS, reachedFlagsForStatus, type ReachedFlag } from "@/lib/types";
+import { logActivity } from "@/db/activity";
+import { statusToEnum, priorityToEnum, roleCategoryToEnum } from "@/lib/enums";
+import { STATUSES, NOT_YET_APPLIED_STATUS } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,8 +25,6 @@ const FIELDS = [
   "notes",
 ] as const;
 
-const APPLICATIONS = "applications";
-const FEED = "feed";
 const MAX_ROWS = 500;
 
 function pickFields(input: Record<string, unknown>): Record<string, string> {
@@ -50,7 +51,10 @@ export async function POST(req: Request) {
       throw new HttpError(400, `Too many rows (max ${MAX_ROWS})`);
     }
 
-    const batch: WriteBatch = adminDb.batch();
+    const now = new Date();
+    const appRows: typeof applications.$inferInsert[] = [];
+    const statusRows: typeof applicationUserStatus.$inferInsert[] = [];
+    const activities: { id: string; company: string; role: string; statusDisplay: string }[] = [];
     const ids: string[] = [];
     let created = 0;
     let appliedCount = 0;
@@ -58,43 +62,69 @@ export async function POST(req: Request) {
     rows.forEach((raw: Record<string, unknown>) => {
       const data = pickFields(raw);
       if (!data.company || !data.role) return;
+
       const status = (data.status as string) || "Applied";
       const validStatus = STATUSES.includes(status as (typeof STATUSES)[number])
         ? status
         : "Applied";
-      const ref = adminDb.collection(APPLICATIONS).doc();
-      ids.push(ref.id);
-      batch.set(ref, {
-        ...data,
-        status: validStatus,
+      const statusEnum = statusToEnum(validStatus) ?? "APPLIED";
+
+      // Explicit uuid so the status log / activity can reference this row
+      // (applications.application_id is a DB default otherwise).
+      const id = randomUUID();
+      ids.push(id);
+
+      appRows.push({
+        applicationId: id,
+        company: data.company,
+        role: data.role,
+        roleCategory: data.roleCategory ? roleCategoryToEnum(data.roleCategory) : null,
+        status: statusEnum,
+        priority: priorityToEnum((data.priority as string) || "Medium") ?? "MEDIUM",
+        location: (data.location as string) || null,
+        appliedDate: (data.date as string) || null,
+        salary: (data.salary as string) || null,
+        url: (data.url as string) || null,
+        recruiterName: (data.recruiter as string) || null,
+        followUp: (data.followup as string) || null,
+        notes: (data.notes as string) || null,
         starred: false,
-        ownerUid: user.uid,
-        // Seed sticky funnel flags from the imported status.
-        ...(reachedFlagsForStatus(validStatus) as Record<ReachedFlag, true>),
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
+        applicantId: user.id,
+        createdAt: now,
+        updatedAt: now,
+      });
+      statusRows.push({
+        applicationId: id,
+        changedById: user.id,
+        status: statusEnum,
+        changedAt: now,
       });
       created++;
-      if (validStatus !== NOT_YET_APPLIED_STATUS) appliedCount++;
+      if (validStatus !== NOT_YET_APPLIED_STATUS) {
+        appliedCount++;
+        activities.push({ id, company: data.company, role: data.role, statusDisplay: validStatus });
+      }
     });
 
     if (created === 0) throw new HttpError(400, "No valid rows (company & role required)");
 
-    await batch.commit();
+    await db.transaction(async (tx) => {
+      await tx.insert(applications).values(appRows);
+      await tx.insert(applicationUserStatus).values(statusRows);
 
-    // Single feed event summarizing the bulk import. Only counts rows that are
-    // actually applications — importing a shortlist of "Want to Apply" rows
-    // shouldn't announce them as applications.
-    if (appliedCount > 0) {
-      await adminDb.collection(FEED).add({
-        type: "applied",
-        company: `${appliedCount} application${appliedCount === 1 ? "" : "s"}`,
-        role: "Bulk import",
-        status: "Applied",
-        ownerUid: user.uid,
-        ts: FieldValue.serverTimestamp(),
-      });
-    }
+      // Only emit feed events for real applications, not "Want to Apply" rows.
+      for (const a of activities) {
+        const se = statusToEnum(a.statusDisplay) ?? "APPLIED";
+        await logActivity(tx, {
+          userId: user.id,
+          type: se === "OFFER" ? "OFFER" : "APPLIED",
+          company: a.company,
+          role: a.role,
+          status: a.statusDisplay,
+          occuredAt: now,
+        });
+      }
+    });
 
     return NextResponse.json({ ok: true, created, ids });
   } catch (err) {

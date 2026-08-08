@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { auth } from "@/lib/firebase";
+import { getToken, getCurrentUser } from "@/lib/client-auth";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import type { ShameEntry } from "@/app/api/shame/route";
 
@@ -136,7 +136,7 @@ function ShameContent({ entries, totalAppsToday, date, loading, error, onRefresh
   error: string;
   onRefresh: () => void;
 }) {
-  const myUid = auth.currentUser?.uid;
+  const myUid = getCurrentUser()?.id;
   const hasData = entries.length > 0;
 
   // Only show full spinner on initial load (no data yet)
@@ -230,7 +230,7 @@ export function useShameData(enabled = true) {
     setError("");
     console.log("[shame-wall] fetchRoasts called | force:", force);
     try {
-      const token = await auth.currentUser?.getIdToken();
+      const token = getToken();
       if (!token) {
         console.warn("[shame-wall] No auth token — user not logged in?");
         return;
@@ -370,7 +370,7 @@ export function ShamePopup() {
   }
 
   // Get the logged-in user's app count for flame intensity
-  const myUid = auth.currentUser?.uid;
+  const myUid = getCurrentUser()?.id;
   const myEntry = data.entries.find((e) => e.uid === myUid);
   const myApps = myEntry?.appsToday ?? 0;
   const popupFlame = getFlameClass(myApps);

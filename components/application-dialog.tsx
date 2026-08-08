@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { STATUSES, PRIORITIES, type Job } from "@/lib/types";
 import { todayISO, ROLE_CATEGORIES, classifyRole } from "@/lib/job-utils";
+import { StatusHistoryDialog } from "./status-history-dialog";
 
 type Form = Record<string, string>;
 
@@ -54,6 +55,7 @@ export function ApplicationDialog({
   onDelete: (id: string) => void;
 }) {
   const [form, setForm] = useState<Form>(EMPTY);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -237,8 +239,15 @@ export function ApplicationDialog({
           <Button variant="outline" className="ml-auto" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
+          {job && (
+            <Button variant="outline" onClick={() => setHistoryOpen(true)}>
+              Update past status
+            </Button>
+          )}
           <Button onClick={save}>Save application</Button>
         </div>
+
+        <StatusHistoryDialog open={historyOpen} onOpenChange={setHistoryOpen} job={job} />
       </DialogContent>
     </Dialog>
   );

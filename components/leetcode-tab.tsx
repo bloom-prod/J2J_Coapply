@@ -16,7 +16,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { auth } from "@/lib/firebase";
+import { getToken } from "@/lib/client-auth";
 import type { LeetCodeStats } from "@/lib/types";
 import { useDarkMode } from "@/hooks/use-dark-mode";
 import { Button } from "@/components/ui/button";
@@ -68,7 +68,7 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
 
   async function fetchStats() {
     try {
-      const token = await auth.currentUser?.getIdToken();
+      const token = getToken();
       if (!token) return;
       const res = await fetch("/api/leetcode", { headers: { Authorization: `Bearer ${token}` } });
       const d = await res.json();
@@ -81,10 +81,10 @@ export function LeetCodeTab({ userColors }: { userColors: Map<string, string> })
   }
 
   async function handleRefresh() {
-    if (!auth.currentUser) return;
+    const token = getToken();
+    if (!token) return;
     setSyncing(true);
     try {
-      const token = await auth.currentUser.getIdToken();
       const syncRes = await fetch("/api/leetcode/refresh", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

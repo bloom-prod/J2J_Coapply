@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { auth } from "@/lib/firebase";
+import { getCurrentUser } from "@/lib/client-auth";
 import { timeAgo } from "@/lib/job-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,7 +69,7 @@ export function JobsTab({ posts, myJobs, onShare, onDelete, onRefresh, onSaveToT
     try { await onRefresh(); } finally { setRefreshing(false); }
   }
 
-  const myUid = auth.currentUser?.uid;
+  const myUid = getCurrentUser()?.id;
 
   function set(field: string, val: string) {
     setForm((f) => ({ ...f, [field]: val }));

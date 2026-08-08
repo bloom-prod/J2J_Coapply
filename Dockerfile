@@ -23,6 +23,12 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Cron scripts (daily-email, sync-leetcode) run against the same node_modules.
+COPY --from=builder --chown=nextjs:nodejs /app/cron ./cron
+
+# The standalone image only ships the server's traced deps (Next bundles
+# postgres/nodemailer into chunks); cron scripts need them on disk at runtime.
+RUN npm install postgres nodemailer
 
 USER nextjs
 

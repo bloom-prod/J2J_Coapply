@@ -1,52 +1,45 @@
 import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
-import { adminDb } from "@/lib/firebase-admin";
+import { randomUUID } from "crypto";
+import { desc, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { resumes } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
+import { logActivity, namesByIds } from "@/db/activity";
+import { ensureBucket, putResume, deleteResume } from "@/lib/s3";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const RESUMES = "resumes";
 
 function fail(status: number, error: string) {
   return NextResponse.json({ ok: false, error }, { status });
 }
 
+const resumeKey = (resumeId: string) => `resumes/${resumeId}.pdf`;
+
 // List — returns metadata only (no base64 to keep responses small)
 export async function GET(req: Request) {
   try {
     await requireUser(req);
-    const snap = await adminDb.collection(RESUMES).orderBy("createdAt", "desc").get();
-    // Fetch userProfiles to resolve current names
-    const profilesSnap = await adminDb.collection("userProfiles").get();
-    const uidToName = new Map();
-    profilesSnap.docs.forEach((d) => {
-      const name = d.data().name;
-      if (name) uidToName.set(d.id, name);
-    });
+    const rows = await db.select().from(resumes).orderBy(desc(resumes.createdAt));
+    const ids = [...new Set(rows.map((r) => r.userId).filter(Boolean))];
+    const nameById = ids.length ? await namesByIds(db, ids) : {};
 
-    const resumes = snap.docs.map((d) => {
-      const x = d.data();
-      const userId = x.userId || "";
-      // Resolve current name from userProfiles, fallback to stored name or "Someone"
-      const userName = uidToName.get(userId) || x.userName || "Someone";
-      return {
-        id: d.id,
-        userId,
-        userName,
-        title: x.title || "",
-        fileName: x.fileName || "",
-        uploadedAt: x.createdAt?.toDate?.()?.toISOString?.() ?? "",
-      };
-    });
-    return NextResponse.json({ ok: true, resumes });
+    const result = rows.map((r) => ({
+      id: r.resumeId,
+      userId: r.userId,
+      userName: nameById[r.userId] ?? "Someone",
+      title: r.resumeTitle || "",
+      fileName: r.fileName || "",
+      uploadedAt: r.createdAt?.toISOString?.() ?? "",
+    }));
+    return NextResponse.json({ ok: true, resumes: result });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);
     return fail(500, err instanceof Error ? err.message : "Server error");
   }
 }
 
-// Upload — stores the PDF as base64 in Firestore (max ~700 KB file)
+// Upload — decodes the PDF, writes it to disk, and records metadata (max ~700 KB file)
 export async function POST(req: Request) {
   try {
     const user = await requireUser(req);
@@ -58,27 +51,41 @@ export async function POST(req: Request) {
     if (!title) throw new HttpError(400, "Title is required");
     if (!fileBase64) throw new HttpError(400, "File is required");
 
-    const byteLen = Math.ceil((fileBase64.length * 3) / 4);
-    if (byteLen > 700 * 1024) throw new HttpError(400, "File must be under 700 KB");
+    const fileBuffer = Buffer.from(fileBase64, "base64");
+    if (fileBuffer.byteLength > 700 * 1024) throw new HttpError(400, "File must be under 700 KB");
 
-    const ref = await adminDb.collection(RESUMES).add({
-      userId: user.uid,
-      userName: user.name,
-      title,
-      fileName,
-      fileBase64,
-      createdAt: FieldValue.serverTimestamp(),
+    const resumeId = randomUUID();
+    const key = resumeKey(resumeId);
+
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      await ensureBucket();
+      await putResume(key, fileBuffer);
+      await tx.insert(resumes).values({
+        resumeId,
+        filePath: key,
+        userId: user.id,
+        fileName,
+        resumeTitle: title,
+        createdAt: now,
+      });
+      await logActivity(tx, {
+        userId: user.id,
+        type: "RESUME_UPLOAD",
+        resumeId,
+        occuredAt: now,
+      });
     });
 
     return NextResponse.json({
       ok: true,
       resume: {
-        id: ref.id,
+        id: resumeId,
         userId: user.uid,
         userName: user.name,
         title,
         fileName,
-        uploadedAt: new Date().toISOString(),
+        uploadedAt: now.toISOString(),
       },
     });
   } catch (err) {
@@ -94,18 +101,21 @@ export async function DELETE(req: Request) {
     const id = String(body.id || "").trim();
     if (!id) throw new HttpError(400, "Missing resume id");
 
-    const ref = adminDb.collection(RESUMES).doc(id);
-    const snap = await ref.get();
-    if (!snap.exists) return NextResponse.json({ ok: true });
+    const existing = await db.select().from(resumes).where(eq(resumes.resumeId, id)).limit(1);
+    if (!existing.length) return NextResponse.json({ ok: true });
+    const row = existing[0];
+    if (row.userId !== user.id) throw new HttpError(403, "You can only delete your own resumes");
 
-    const data = snap.data() as Record<string, unknown>;
-    if (data.userId !== user.uid) throw new HttpError(403, "You can only delete your own resumes");
-
-    const commentsSnap = await adminDb.collection("resumeComments").where("resumeId", "==", id).get();
-    const batch = adminDb.batch();
-    commentsSnap.docs.forEach((d) => batch.delete(d.ref));
-    batch.delete(ref);
-    await batch.commit();
+    await db.transaction(async (tx) => {
+      await tx.delete(resumes).where(eq(resumes.resumeId, id));
+      await logActivity(tx, {
+        userId: user.id,
+        type: "RESUME_DELETE",
+        resumeId: id,
+        occuredAt: new Date(),
+      });
+    });
+    await deleteResume(row.filePath);
 
     return NextResponse.json({ ok: true });
   } catch (err) {

@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase-admin";
-import { adminAuth } from "@/lib/firebase-admin";
+import { and, eq, ne } from "drizzle-orm";
+import { db } from "@/db";
+import { lcProblems, lcSolvedUser, users } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const DIFF_ENUM_TO_RAW: Record<string, string> = {
+  EASY: "easy",
+  MEDIUM: "medium",
+  HARD: "hard",
+  UNKNOWN: "unknown",
+};
 
 function weekMonday(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
@@ -20,15 +28,22 @@ export async function GET(req: Request) {
   try {
     await requireUser(req);
 
-    // Get all problems from root collection
-    const problemsSnap = await adminDb.collection("leetcodeProblems").get();
-    
-    // Get all userProfiles for name resolution
-    const profilesSnap = await adminDb.collection("userProfiles").get();
-    const uidToName = new Map<string, string>();
-    profilesSnap.docs.forEach((doc) => {
-      uidToName.set(doc.id, doc.data().name || "Someone");
-    });
+    // Get all solves (metadata via lcProblems, names via users)
+    const rows = await db
+      .select({
+        uid: lcSolvedUser.userId,
+        problemId: lcSolvedUser.problemId,
+        language: lcSolvedUser.languageUsed,
+        solvedAt: lcSolvedUser.solvedAt,
+        userName: users.name,
+        title: lcProblems.problemName,
+        difficulty: lcProblems.problemDifficulty,
+      })
+      .from(lcSolvedUser)
+      .leftJoin(lcProblems, eq(lcSolvedUser.problemId, lcProblems.problemId))
+      .leftJoin(users, eq(lcSolvedUser.userId, users.id))
+      // System / admin accounts aren't jobbing — keep them off the leaderboard.
+      .where(and(ne(users.isAdmin, true), ne(users.email, "system@jobless.local")));
 
     const languageCounts: Record<string, number> = {};
     const difficultyCounts: Record<string, number> = {};
@@ -45,13 +60,14 @@ export async function GET(req: Request) {
     }> = [];
     let totalSolved = 0;
 
-    problemsSnap.forEach((doc) => {
-      const p = doc.data() as Record<string, unknown>;
-      const uid = (p.userId as string) || "";
-      const userName = (p.userName as string) || uidToName.get(uid) || "Someone";
+    rows.forEach((r) => {
+      const uid = r.uid || "";
+      const userName = r.userName || "Someone";
+      const difficulty =
+        r.difficulty && DIFF_ENUM_TO_RAW[r.difficulty] ? DIFF_ENUM_TO_RAW[r.difficulty] : "unknown";
 
       totalSolved++;
-      
+
       // Count per user
       if (!userCounts[uid]) {
         userCounts[uid] = { name: userName, count: 0 };
@@ -59,18 +75,18 @@ export async function GET(req: Request) {
       userCounts[uid].count++;
 
       // Language counts
-      if (typeof p.language === "string") {
-        languageCounts[p.language] = (languageCounts[p.language] || 0) + 1;
+      if (typeof r.language === "string") {
+        languageCounts[r.language] = (languageCounts[r.language] || 0) + 1;
       }
-      
-      // Difficulty counts
-      if (typeof p.difficulty === "string") {
-        difficultyCounts[p.difficulty] = (difficultyCounts[p.difficulty] || 0) + 1;
+
+      // Difficulty counts (report original lowercase values)
+      if (typeof difficulty === "string") {
+        difficultyCounts[difficulty] = (difficultyCounts[difficulty] || 0) + 1;
       }
-      
+
       // Weekly volume
-      if (typeof p.solvedAt === "string") {
-        const w = weekMonday(p.solvedAt.slice(0, 10));
+      if (r.solvedAt) {
+        const w = weekMonday(r.solvedAt.toISOString().slice(0, 10));
         weekly[w] = (weekly[w] || 0) + 1;
         if (!weeklyByUser[w]) weeklyByUser[w] = {};
         weeklyByUser[w][userName] = (weeklyByUser[w][userName] || 0) + 1;
@@ -78,11 +94,11 @@ export async function GET(req: Request) {
         // Collect for activity feed
         recentActivity.push({
           userName,
-          problemId: (p.problemId as string) || doc.id,
-          title: (p.title as string) || "Unknown Problem",
-          difficulty: (p.difficulty as string) || "unknown",
-          language: p.language as string,
-          solvedAt: p.solvedAt as string,
+          problemId: r.problemId || "",
+          title: r.title || "Unknown Problem",
+          difficulty,
+          language: r.language || "",
+          solvedAt: r.solvedAt.toISOString(),
         });
       }
     });

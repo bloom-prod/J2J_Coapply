@@ -1,13 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { sendPasswordResetEmail } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { getCurrentUser } from "@/lib/client-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { UserProfile, Job } from "@/lib/types";
-import { toast } from "sonner";
 import { ForestTab } from "@/components/forest-tab";
 
 function ExternalLink({ href, children }: { href: string; children: React.ReactNode }) {
@@ -28,16 +26,15 @@ export function ProfileTab({
   updateProfile: (data: Record<string, string>) => Promise<void>;
   jobs: Job[];
 }) {
-  const currentUser = auth.currentUser;
+  const currentUser = getCurrentUser();
 
   const [editing, setEditing] = useState(false);
-  const [displayName, setDisplayName] = useState(profile?.name || currentUser?.displayName || "");
+  const [displayName, setDisplayName] = useState(profile?.name || currentUser?.name || "");
   const [githubUrl, setGithubUrl] = useState(profile?.githubUrl || "");
   const [linkedinUrl, setLinkedinUrl] = useState(profile?.linkedinUrl || "");
   const [websiteUrl, setWebsiteUrl] = useState(profile?.websiteUrl || "");
   const [leetcodeRepoUrl, setLeetcodeRepoUrl] = useState(profile?.leetcodeRepoUrl || "");
   const [busy, setBusy] = useState(false);
-  const [resetSent, setResetSent] = useState(false);
 
   async function handleSave() {
     setBusy(true);
@@ -52,20 +49,6 @@ export function ProfileTab({
       setEditing(false);
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function handleResetPassword() {
-    if (!currentUser?.email) {
-      toast.error("No email found — cannot reset password.");
-      return;
-    }
-    try {
-      await sendPasswordResetEmail(auth, currentUser.email);
-      setResetSent(true);
-      toast.success("Password reset email sent — check your inbox.");
-    } catch (e) {
-      toast.error("Failed to send reset email — " + (e as Error).message);
     }
   }
 
@@ -89,7 +72,7 @@ export function ProfileTab({
         <div className="stat-card" style={{ textAlign: "left", padding: "20px" }}>
           <div className="it" style={{ marginBottom: 16 }}>Account</div>
           <div className="flex flex-col gap-3" style={{ fontSize: 13, color: "var(--text-mid)" }}>
-            <div><strong style={{ color: "var(--text-dark)", minWidth: 100, display: "inline-block" }}>Name</strong> {profile?.name || currentUser?.displayName || "—"}</div>
+            <div><strong style={{ color: "var(--text-dark)", minWidth: 100, display: "inline-block" }}>Name</strong> {profile?.name || currentUser?.name || "—"}</div>
             <div><strong style={{ color: "var(--text-dark)", minWidth: 100, display: "inline-block" }}>Email</strong> {profile?.email || currentUser?.email || "—"}</div>
           </div>
         </div>
@@ -139,21 +122,6 @@ export function ProfileTab({
           ))}
         </div>
       )}
-
-      <div className="feed-card" style={{ marginTop: 14 }}>
-        <div className="it" style={{ marginBottom: 14 }}>Security</div>
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm font-medium text-[var(--text-dark)]">Password</div>
-              <div className="text-xs text-[var(--text-light)]">Reset your password via email</div>
-            </div>
-            <Button variant="outline" size="sm" className="rounded-full" onClick={handleResetPassword} disabled={resetSent}>
-              <i className="ti ti-mail" /> {resetSent ? "Sent" : "Reset Password"}
-            </Button>
-          </div>
-        </div>
-      </div>
 
       <div style={{ marginTop: 14 }}>
         <ForestTab jobs={jobs} />

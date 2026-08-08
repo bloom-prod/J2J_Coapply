@@ -1,47 +1,42 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  onAuthStateChanged,
-  signOut as fbSignOut,
-  updateProfile as fbUpdateProfile,
-  type User,
-} from "firebase/auth";
-import {
-  collection,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  type DocumentData,
-  type QueryDocumentSnapshot,
-  type Timestamp,
-} from "firebase/firestore";
 import { toast } from "sonner";
-import { auth, db } from "@/lib/firebase";
+import {
+  onAuthChange,
+  signOut as clientSignOut,
+  getToken,
+  getCurrentUser,
+  type ClientUser,
+} from "@/lib/client-auth";
 import type { FeedEvent, Job, JobPost, Resume, UserProfile, InterviewPrepPost, InterviewPrepComment } from "@/lib/types";
 import { resolveUserColor } from "@/lib/user-colors";
 import { jobKey } from "@/lib/import-utils";
 
-async function ensureUserProfile(_uid: string, _name: string, _email: string | null) {
-  // Disabled Firestore access - user profiles not stored in Firestore
-  // Just using static color system instead
-  return;
+interface ApiApplication {
+  id: string;
+  company: string;
+  role: string;
+  roleCategory: string;
+  status: string;
+  priority: string;
+  location: string;
+  date: string;
+  salary: string;
+  url: string;
+  recruiter: string;
+  followup: string;
+  notes: string;
+  starred: boolean;
+  ownerUid: string;
+  ownerName: string;
+  added: string;
+  updated: string;
 }
 
-function tsToISO(t: unknown): string {
-  try {
-    const v = t as Timestamp | undefined;
-    return v && typeof v.toDate === "function" ? v.toDate().toISOString() : "";
-  } catch {
-    return "";
-  }
-}
-
-function mapDoc(d: QueryDocumentSnapshot<DocumentData>): Job {
-  const x = d.data();
+function mapDoc(x: ApiApplication): Job {
   return {
-    id: d.id,
+    id: x.id,
     company: x.company || "",
     role: x.role || "",
     roleCategory: x.roleCategory || "",
@@ -54,31 +49,41 @@ function mapDoc(d: QueryDocumentSnapshot<DocumentData>): Job {
     recruiter: x.recruiter || "",
     followup: x.followup || "",
     notes: x.notes || "",
-    starred: x.starred === true || x.starred === "true",
+    starred: x.starred === true,
     ownerUid: x.ownerUid || "",
-    ownerName: "",
-    added: tsToISO(x.createdAt),
-    updated: tsToISO(x.updatedAt),
-    // Sticky funnel flags — `=== true` keeps legacy/string values out.
-    reachedApplied: x.reachedApplied === true,
-    reachedOA: x.reachedOA === true,
-    reachedPhoneScreen: x.reachedPhoneScreen === true,
-    reachedInterview: x.reachedInterview === true,
-    reachedOffer: x.reachedOffer === true,
+    ownerName: x.ownerName || "",
+    added: x.added || "",
+    updated: x.updated || "",
+    // Sticky funnel flags aren't returned by the REST endpoint.
+    reachedApplied: false,
+    reachedOA: false,
+    reachedPhoneScreen: false,
+    reachedInterview: false,
+    reachedOffer: false,
   };
 }
 
-function mapFeed(d: QueryDocumentSnapshot<DocumentData>): FeedEvent {
-  const x = d.data();
-  const ts = x.ts as Timestamp | undefined;
+interface ApiFeedEvent {
+  id: string;
+  type: FeedEvent["type"];
+  company: string;
+  role: string;
+  status: string;
+  ownerUid: string;
+  ownerName: string;
+  ts: string | Date | null;
+}
+
+function mapFeed(x: ApiFeedEvent): FeedEvent {
+  const ts = typeof x.ts === "string" ? new Date(x.ts) : x.ts instanceof Date ? x.ts : null;
   return {
-    type: (x.type as FeedEvent["type"]) || "applied",
+    type: x.type || "applied",
     company: x.company || "",
     role: x.role || "",
     status: x.status || "",
     ownerUid: x.ownerUid || "",
-    ownerName: "",
-    ts: ts && typeof ts.toDate === "function" ? ts.toDate() : null,
+    ownerName: x.ownerName || "",
+    ts,
   };
 }
 
@@ -91,7 +96,7 @@ interface Pending {
 const EMPTY_PENDING: Pending = { adds: [], patches: {}, deletes: {} };
 
 export function useBloom() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<ClientUser | null>(getCurrentUser());
   const [authReady, setAuthReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [serverJobs, setServerJobs] = useState<Job[]>([]);
@@ -113,13 +118,9 @@ export function useBloom() {
 
   // ---- auth ----
   useEffect(() => {
-    return onAuthStateChanged(auth, (u) => {
+    return onAuthChange((u) => {
       setUser(u);
       setAuthReady(true);
-      if (u) {
-        const name = u.displayName || u.email || "Someone";
-        ensureUserProfile(u.uid, name, u.email).catch(console.error);
-      }
       if (!u) {
         setServerJobs([]);
         setRawFeed([]);
@@ -135,41 +136,49 @@ export function useBloom() {
     });
   }, []);
 
-  // ---- live snapshots ----
+  // ---- polling ----
   useEffect(() => {
     if (!user) return;
     firstSnap.current = true;
     profilesReady.current = false;
     setLoading(true);
 
-    const unsubApps = onSnapshot(
-      collection(db, "applications"),
-      (snap) => {
-        setServerJobs(snap.docs.map(mapDoc));
-        if (firstSnap.current) {
+    let cancelled = false;
+
+    async function refresh() {
+      const token = getToken();
+      if (!token) return;
+      try {
+        const [appsRes, feedRes] = await Promise.all([
+          fetch("/api/applications", { headers: { Authorization: `Bearer ${token}` } }),
+          fetch("/api/feed?limit=10", { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+        const [appsData, feedData] = await Promise.all([appsRes.json(), feedRes.json()]);
+        if (cancelled) return;
+        if (appsData.ok) {
+          setServerJobs(appsData.applications.map(mapDoc));
+        }
+        if (feedData.ok) setRawFeed(feedData.feed.map(mapFeed));
+      } catch (err) {
+        console.error("poll error", err);
+      } finally {
+        if (!cancelled) {
+          // Mark the first snapshot done regardless of success so the loader
+          // never hangs if a single poll fails.
           firstSnap.current = false;
-          // Only clear loading once the profiles fetch has also arrived,
-          // so uidNameMap is populated before any name-resolved data renders.
           if (profilesReady.current) setLoading(false);
         }
-      },
-      (err) => console.error("applications snapshot error", err)
-    );
+      }
+    }
 
-    const unsubFeed = onSnapshot(
-      query(collection(db, "feed"), orderBy("ts", "desc"), limit(10)),
-      (snap) => setRawFeed(snap.docs.map(mapFeed)),
-      (err) => console.error("feed snapshot error", err)
-    );
+    refresh();
+    const interval = setInterval(refresh, 15000);
 
-    // uid→name/color map comes from the server (Admin SDK). A client-side
-    // onSnapshot on `userProfiles` is rejected by the deployed Firestore rules,
-    // which leaves this map empty and renders every name as "Someone" — see
-    // the note in app/api/usernames/route.ts before changing this.
-    let cancelled = false;
+    // uid→name/color map comes from the server. We fetch it alongside the
+    // jobs/feed poll so the loader only clears after names are resolved.
     const loadNames = async () => {
       try {
-        const token = await auth.currentUser?.getIdToken();
+        const token = getToken();
         if (!token) return;
         const res = await fetch("/api/usernames", { headers: { Authorization: `Bearer ${token}` } });
         const d = await res.json();
@@ -201,9 +210,8 @@ export function useBloom() {
 
     return () => {
       cancelled = true;
+      clearInterval(interval);
       window.removeEventListener("focus", onFocus);
-      unsubApps();
-      unsubFeed();
     };
   }, [user]);
 
@@ -237,7 +245,7 @@ export function useBloom() {
   }, [serverJobs, pending, uidNameMap]);
 
   const myJobs = useMemo<Job[]>(
-    () => allJobs.filter((j) => j.ownerUid === user?.uid),
+    () => allJobs.filter((j) => j.ownerUid === user?.id),
     [allJobs, user]
   );
 
@@ -253,7 +261,8 @@ export function useBloom() {
   // ---- writes (through the TS API, with optimistic overlay) ----
   const authedFetch = useCallback(
     async (method: string, body: Record<string, unknown>) => {
-      const token = await auth.currentUser!.getIdToken();
+      const token = getToken();
+      if (!token) return { ok: false, error: "Not signed in" };
       const res = await fetch("/api/applications", {
         method,
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -291,8 +300,8 @@ export function useBloom() {
         followup: data.followup || "",
         notes: data.notes || "",
         starred: false,
-        ownerUid: user.uid,
-        ownerName: user.displayName || user.email || "You",
+        ownerUid: user.id,
+        ownerName: user.name || user.email || "You",
         added: now,
         updated: now,
       };
@@ -341,8 +350,8 @@ export function useBloom() {
           followup: data.followup || "",
           notes: data.notes || "",
           starred: false,
-          ownerUid: user.uid,
-          ownerName: user.displayName || user.email || "You",
+          ownerUid: user.id,
+          ownerName: user.name || user.email || "You",
           added: now,
           updated: now,
         };
@@ -350,7 +359,8 @@ export function useBloom() {
       const tempIds = tempJobs.map((j) => j.id);
       setPending((p) => ({ ...p, adds: [...tempJobs, ...p.adds] }));
       try {
-        const token = await auth.currentUser!.getIdToken();
+        const token = getToken();
+        if (!token) return;
         const res = await fetch("/api/applications/bulk", {
           method: "POST",
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -442,9 +452,9 @@ export function useBloom() {
   const [fetchedProfile, setFetchedProfile] = useState<UserProfile | null>(null);
 
   const fetchProfile = useCallback(async () => {
-    if (!auth.currentUser) return;
+    const token = getToken();
+    if (!token) return;
     try {
-      const token = await auth.currentUser.getIdToken();
       const res = await fetch("/api/profile", { headers: { Authorization: `Bearer ${token}` } });
       const d = await res.json();
       if (d.ok) setFetchedProfile(d.profile);
@@ -460,9 +470,9 @@ export function useBloom() {
 
   const updateProfile = useCallback(
     async (data: Record<string, string>) => {
-      if (!auth.currentUser) return;
+      const token = getToken();
+      if (!token) return;
       try {
-        const token = await auth.currentUser.getIdToken();
         const res = await fetch("/api/profile", {
           method: "PUT",
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -470,11 +480,10 @@ export function useBloom() {
         });
         const d = await res.json();
         if (!res.ok || !d.ok) throw new Error(d.error || `Update failed (${res.status})`);
-        // Update client-side Firebase Auth displayName so nav bar reflects change immediately
-        if (data.name && auth.currentUser) {
-          await fbUpdateProfile(auth.currentUser, { displayName: data.name.trim() });
-          // Optimistically update uid→name map so all views reflect the new name immediately
-          const uid = auth.currentUser.uid;
+        // Update the uid→name map so nav bar and all views reflect the new name immediately
+        const me = getCurrentUser();
+        if (data.name && me) {
+          const uid = me.id;
           const newName = data.name.trim();
           setUidNameMap((prev) => {
             const next = new Map(prev);
@@ -490,7 +499,7 @@ export function useBloom() {
           });
         }
         await fetchProfile();
-        // The onSnapshot listener on userProfiles will automatically pick up the server-side change
+        // The next names poll will pick up the server-side change.
         toast.success("Profile updated 🌿");
       } catch (e) {
         toast.error("Profile update failed — " + (e as Error).message);
@@ -500,9 +509,9 @@ export function useBloom() {
   );
 
   const fetchJobPosts = useCallback(async () => {
-    if (!auth.currentUser) return;
+    const token = getToken();
+    if (!token) return;
     try {
-      const token = await auth.currentUser.getIdToken();
       const res = await fetch("/api/jobboard", { headers: { Authorization: `Bearer ${token}` } });
       const d = await res.json();
       if (d.ok) setJobPosts(d.posts as JobPost[]);
@@ -517,8 +526,8 @@ export function useBloom() {
   }, [user, fetchJobPosts]);
 
   const shareJob = useCallback(async (data: { company: string; role: string; url: string; location: string; notes: string }) => {
-    if (!auth.currentUser) return;
-    const token = await auth.currentUser.getIdToken();
+    const token = getToken();
+    if (!token) return;
     const res = await fetch("/api/jobboard", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -531,9 +540,9 @@ export function useBloom() {
   }, [fetchJobPosts]);
 
   const fetchResumes = useCallback(async () => {
-    if (!auth.currentUser) return;
+    const token = getToken();
+    if (!token) return;
     try {
-      const token = await auth.currentUser.getIdToken();
       const res = await fetch("/api/resumes", { headers: { Authorization: `Bearer ${token}` } });
       const d = await res.json();
       if (d.ok) setResumes(d.resumes as Resume[]);
@@ -548,14 +557,14 @@ export function useBloom() {
   }, [user, fetchResumes]);
 
   const uploadResume = useCallback(async (title: string, file: File) => {
-    if (!auth.currentUser) return;
+    const token = getToken();
+    if (!token) return;
     const fileBase64 = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve((reader.result as string).split(",")[1]);
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
-    const token = await auth.currentUser.getIdToken();
     const res = await fetch("/api/resumes", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -567,8 +576,8 @@ export function useBloom() {
   }, [fetchResumes]);
 
   const deleteResume = useCallback(async (id: string) => {
-    if (!auth.currentUser) return;
-    const token = await auth.currentUser.getIdToken();
+    const token = getToken();
+    if (!token) return;
     const res = await fetch("/api/resumes", {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -580,8 +589,8 @@ export function useBloom() {
   }, [fetchResumes]);
 
   const deleteJobPost = useCallback(async (id: string) => {
-    if (!auth.currentUser) return;
-    const token = await auth.currentUser.getIdToken();
+    const token = getToken();
+    if (!token) return;
     const res = await fetch("/api/jobboard", {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -594,9 +603,9 @@ export function useBloom() {
   }, [fetchJobPosts]);
 
   const fetchInterviewPrepPosts = useCallback(async () => {
-    if (!auth.currentUser) return;
+    const token = getToken();
+    if (!token) return;
     try {
-      const token = await auth.currentUser.getIdToken();
       const res = await fetch("/api/interview-prep", { headers: { Authorization: `Bearer ${token}` } });
       const d = await res.json();
       if (d.ok) setInterviewPrepPosts(d.posts as InterviewPrepPost[]);
@@ -611,8 +620,8 @@ export function useBloom() {
   }, [user, fetchInterviewPrepPosts]);
 
   const createInterviewPrepPost = useCallback(async (data: { title: string; content: string; company: string }) => {
-    if (!auth.currentUser) return;
-    const token = await auth.currentUser.getIdToken();
+    const token = getToken();
+    if (!token) return;
     const res = await fetch("/api/interview-prep", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -624,8 +633,8 @@ export function useBloom() {
   }, [fetchInterviewPrepPosts]);
 
   const deleteInterviewPrepPost = useCallback(async (id: string) => {
-    if (!auth.currentUser) return;
-    const token = await auth.currentUser.getIdToken();
+    const token = getToken();
+    if (!token) return;
     const res = await fetch("/api/interview-prep", {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -637,9 +646,9 @@ export function useBloom() {
   }, [fetchInterviewPrepPosts]);
 
   const fetchInterviewPrepComments = useCallback(async (postId: string) => {
-    if (!auth.currentUser) return;
+    const token = getToken();
+    if (!token) return;
     try {
-      const token = await auth.currentUser.getIdToken();
       const res = await fetch(`/api/interview-prep/comments?postId=${postId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -653,8 +662,8 @@ export function useBloom() {
   }, []);
 
   const addInterviewPrepComment = useCallback(async (postId: string, text: string) => {
-    if (!auth.currentUser) return;
-    const token = await auth.currentUser.getIdToken();
+    const token = getToken();
+    if (!token) return;
     const res = await fetch("/api/interview-prep/comments", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -665,7 +674,7 @@ export function useBloom() {
     await fetchInterviewPrepComments(postId);
   }, [fetchInterviewPrepComments]);
 
-  const signOut = useCallback(() => fbSignOut(auth), []);
+  const signOut = useCallback(() => clientSignOut(), []);
 
   const userColors = useMemo(
     () => new Map(userProfiles ? [...userProfiles.values()].map((p) => [p.name, p.color]) : []),
