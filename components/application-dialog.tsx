@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { STATUSES, PRIORITIES, type Job } from "@/lib/types";
 import { todayISO, ROLE_CATEGORIES, classifyRole } from "@/lib/job-utils";
+import { safeHttpUrl } from "@/lib/safe-url";
 import { StatusHistoryDialog } from "./status-history-dialog";
 
 type Form = Record<string, string>;
@@ -231,7 +232,7 @@ export function ApplicationDialog({
           {form.url && (
             <Button
               variant="outline"
-              onClick={() => window.open(form.url, "_blank", "noopener,noreferrer")}
+              onClick={() => window.open(safeHttpUrl(form.url), "_blank", "noopener,noreferrer")}
             >
               <i className="ti ti-external-link" /> Open link
             </Button>

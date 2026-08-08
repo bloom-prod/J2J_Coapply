@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq, sql } from "drizzle-orm";
+import { createHash, timingSafeEqual } from "crypto";
 import { db } from "@/db";
 import { lcProblems, lcSolvedUser, users } from "@/db/schema";
 import { logActivity } from "@/db/activity";
@@ -8,6 +9,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET || "";
+
+// Hash both sides to a fixed length so `===` length leaks are impossible.
+function constantEqual(a: string, b: string): boolean {
+  const ha = createHash("sha256").update(a).digest();
+  const hb = createHash("sha256").update(b).digest();
+  return timingSafeEqual(ha, hb);
+}
 
 const DIFF_RAW_TO_ENUM: Record<string, "EASY" | "MEDIUM" | "HARD" | "UNKNOWN"> = {
   easy: "EASY",
@@ -24,8 +32,8 @@ function fail(status: number, error: string) {
 // never fall back to a hardcoded default that could be sent by anyone.
 function checkSecret(req: Request): boolean {
   if (!INTERNAL_SECRET) return false;
-  const secret = req.headers.get("x-internal-secret");
-  return secret === INTERNAL_SECRET;
+  const secret = req.headers.get("x-internal-secret") || "";
+  return constantEqual(secret, INTERNAL_SECRET);
 }
 
 // GET: Return all users with leetcodeRepoUrl for sync (internal only)

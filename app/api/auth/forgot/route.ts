@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/db";
 import { users, passwordResets } from "@/db/schema";
 import { sendOtpEmail } from "@/lib/mailer";
+import { rateLimiter, clientIp, RATE_LIMIT_WINDOW_MS, IP_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,8 +18,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Email is required." }, { status: 400 });
   }
 
+  // Per-IP budget so the endpoint can't be used to flood inboxes from one
+  // source, and a per-address budget so an attacker can't spam a victim.
+  const ip = clientIp(req);
+  if (!rateLimiter.hit(`forgot:${ip}`, IP_LIMITS.forgot, RATE_LIMIT_WINDOW_MS)) {
+    return NextResponse.json(
+      { ok: false, error: "Too many requests. Please wait and try again in 15 minutes." },
+      { status: 429 }
+    );
+  }
+  if (!rateLimiter.hit(`forgot-email:${clean}`, IP_LIMITS.forgotPerEmail, RATE_LIMIT_WINDOW_MS)) {
+    return NextResponse.json(
+      { ok: false, error: "Too many requests for this address. Please wait and try again." },
+      { status: 429 }
+    );
+  }
+
   // Always respond ok to avoid revealing which emails exist. Only send when the
-  // user actually exists.
+  // user actually exists, and never leak that a send failed — a 500 here (or a
+  // timing difference) would let an attacker probe which addresses are
+  // registered. The same { ok: true } is returned whether or not an address
+  // exists and whether or not the mail send succeeded.
   const user = await db.query.users.findFirst({ where: eq(users.email, clean) });
   if (user) {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -41,10 +61,8 @@ export async function POST(req: Request) {
     try {
       await sendOtpEmail(clean, otp);
     } catch (e) {
-      return NextResponse.json(
-        { ok: false, error: e instanceof Error ? e.message : "Failed to send email." },
-        { status: 500 }
-      );
+      // Deliberately indistinguishable from success — see note above.
+      console.error("Failed to send OTP email:", e);
     }
   }
 

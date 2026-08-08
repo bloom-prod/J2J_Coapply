@@ -14,6 +14,14 @@ function fail(status: number, error: string) {
   return NextResponse.json({ ok: false, error }, { status });
 }
 
+// PDF magic bytes: "%PDF-" at the start of the file. base64-decode never throws
+// for malformed input, so this is the real gate — it rejects non-PDF payloads
+// (and garbage) that would otherwise be stored as "application/pdf".
+const PDF_MAGIC = Buffer.from("%PDF-", "ascii");
+function isPdf(buffer: Buffer): boolean {
+  return buffer.length >= PDF_MAGIC.length && buffer.subarray(0, PDF_MAGIC.length).equals(PDF_MAGIC);
+}
+
 const resumeKey = (resumeId: string) => `resumes/${resumeId}.pdf`;
 
 // List — returns metadata only (no base64 to keep responses small)
@@ -53,6 +61,7 @@ export async function POST(req: Request) {
 
     const fileBuffer = Buffer.from(fileBase64, "base64");
     if (fileBuffer.byteLength > 700 * 1024) throw new HttpError(400, "File must be under 700 KB");
+    if (!isPdf(fileBuffer)) throw new HttpError(400, "Only PDF files are allowed");
 
     const resumeId = randomUUID();
     const key = resumeKey(resumeId);

@@ -6,6 +6,7 @@ import { requireUser, HttpError } from "@/lib/auth-server";
 import { logActivity, namesByIds } from "@/db/activity";
 import { statusToEnum, enumToStatus, priorityToEnum, enumToPriority, roleCategoryToEnum, enumToRoleCategory } from "@/lib/enums";
 import { STATUSES, NOT_YET_APPLIED_STATUS } from "@/lib/types";
+import { isSafeHttpUrl } from "@/lib/safe-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,6 +86,9 @@ export async function POST(req: Request) {
     const data = cleanInput(body);
     if (!data.company) throw new HttpError(400, "Company is required");
     if (!data.role) throw new HttpError(400, "Role is required");
+    if (data.url && !isSafeHttpUrl(data.url)) {
+      throw new HttpError(400, "URL must be a valid http(s) link");
+    }
 
     const statusDisplay = (data.status as string) || "Applied";
     const statusEnum = statusToEnum(statusDisplay) ?? "APPLIED";
@@ -158,6 +162,9 @@ export async function PUT(req: Request) {
     }
 
     const data = cleanInput(body);
+    if (data.url && !isSafeHttpUrl(data.url)) {
+      throw new HttpError(400, "URL must be a valid http(s) link");
+    }
     const patch: Record<string, unknown> = {};
     for (const k of FIELDS) {
       if (data[k] === undefined) continue;

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { signToken, verifyPassword } from "@/lib/jwt";
+import { rateLimiter, clientIp, RATE_LIMIT_WINDOW_MS, IP_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,14 @@ export async function POST(req: Request) {
     const { email, password } = await req.json().catch(() => ({}));
     if (!email || !password) {
       return NextResponse.json({ ok: false, error: "Email and password are required." }, { status: 400 });
+    }
+
+    // Per-IP budget to blunt password brute-forcing.
+    if (!rateLimiter.hit(`login:${clientIp(req)}`, IP_LIMITS.login, RATE_LIMIT_WINDOW_MS)) {
+      return NextResponse.json(
+        { ok: false, error: "Too many attempts. Please wait and try again in 15 minutes." },
+        { status: 429 }
+      );
     }
 
     const row = await db.query.users.findFirst({

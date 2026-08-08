@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { STATUSES, type Job } from "@/lib/types";
+import { safeHttpUrl } from "@/lib/safe-url";
 import { classifyRole, fmtDate, isStarred, PRIORITY_ORDER, statusKey } from "@/lib/job-utils";
 import { jobKey } from "@/lib/import-utils";
 
@@ -269,7 +270,7 @@ export function TrackerTab({
                     <td style={{ fontSize: 12, color: "var(--text-light)", whiteSpace: "nowrap" }}>{j.salary || "—"}</td>
                     <td style={{ textAlign: "right", paddingRight: 10, whiteSpace: "nowrap" }}>
                       {j.url && (
-                        <a href={j.url} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
+                        <a href={safeHttpUrl(j.url)} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
                           <button className="abtn" title="Posting"><i className="ti ti-external-link" /></button>
                         </a>
                       )}

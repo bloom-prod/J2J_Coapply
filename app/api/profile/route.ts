@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
 import { resolveUserColor } from "@/lib/user-colors";
+import { isSafeHttpUrl } from "@/lib/safe-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,13 +13,14 @@ function fail(status: number, error: string) {
   return NextResponse.json({ ok: false, error }, { status });
 }
 
-function isValidUrl(url: string): boolean {
-  try {
-    new URL(url);
-    return true;
-  } catch {
-    return false;
+// Trim + require http(s); empty allowed (field cleared). Throws on disallowed
+// schemes so a `javascript:` URL can never be stored/rendered for anyone.
+function safeProfileUrl(value: unknown): string {
+  const s = String(value || "").trim();
+  if (s && !isSafeHttpUrl(s)) {
+    throw new HttpError(400, "URL must be a valid http(s) link");
   }
+  return s;
 }
 
 export async function GET(req: Request) {
@@ -61,14 +63,11 @@ export async function PUT(req: Request) {
       if (!name) throw new HttpError(400, "Name cannot be empty");
       updates.name = name;
     }
-    if (body.githubUrl !== undefined) updates.githubUrl = String(body.githubUrl || "").trim();
-    if (body.linkedinUrl !== undefined) updates.linkedinUrl = String(body.linkedinUrl || "").trim();
-    if (body.websiteUrl !== undefined) updates.websiteUrl = String(body.websiteUrl || "").trim();
+    if (body.githubUrl !== undefined) updates.githubUrl = safeProfileUrl(body.githubUrl);
+    if (body.linkedinUrl !== undefined) updates.linkedinUrl = safeProfileUrl(body.linkedinUrl);
+    if (body.websiteUrl !== undefined) updates.websiteUrl = safeProfileUrl(body.websiteUrl);
     if (body.leetcodeRepoUrl !== undefined) {
-      const url = String(body.leetcodeRepoUrl || "").trim();
-      if (url && !isValidUrl(url)) {
-        throw new HttpError(400, "Invalid LeetCode repo URL");
-      }
+      const url = safeProfileUrl(body.leetcodeRepoUrl);
       updates.leetcodeRepoUrl = url;
       if (url) updates.leetcodeLastSyncedAt = null; // Reset sync time when connecting
     }

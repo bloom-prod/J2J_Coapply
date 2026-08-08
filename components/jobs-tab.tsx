@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { getCurrentUser } from "@/lib/client-auth";
 import { timeAgo } from "@/lib/job-utils";
+import { safeHttpUrl } from "@/lib/safe-url";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -263,7 +264,7 @@ export function JobsTab({ posts, myJobs, onShare, onDelete, onRefresh, onSaveToT
                         {saved ? "Saved" : "Save"}
                       </button>
                       <a
-                        href={post.url}
+                        href={safeHttpUrl(post.url)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="job-apply-btn"
@@ -340,7 +341,7 @@ export function JobsTab({ posts, myJobs, onShare, onDelete, onRefresh, onSaveToT
                           {saved ? "Saved" : "Save"}
                         </button>
                         <a
-                          href={post.url}
+                          href={safeHttpUrl(post.url)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="job-apply-btn"

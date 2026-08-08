@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import type { Job } from "@/lib/types";
+import { safeHttpUrl } from "@/lib/safe-url";
 import { parseSheet, type ParsedRow } from "@/lib/import-utils";
 
 export function ImportDialog({
@@ -274,7 +275,7 @@ export function ImportDialog({
                         <td style={{ color: "var(--text-light)", whiteSpace: "nowrap" }}>{r.data.date || "—"}</td>
                         <td style={{ maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {r.data.url ? (
-                            <a href={r.data.url} target="_blank" rel="noreferrer" style={{ color: "var(--info)", textDecoration: "none", fontSize: 11 }}>
+                            <a href={safeHttpUrl(r.data.url)} target="_blank" rel="noreferrer" style={{ color: "var(--info)", textDecoration: "none", fontSize: 11 }}>
                               link
                             </a>
                           ) : (

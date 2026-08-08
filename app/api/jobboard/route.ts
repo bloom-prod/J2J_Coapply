@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { jobboard } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
 import { logActivity, namesByIds } from "@/db/activity";
+import { isSafeHttpUrl } from "@/lib/safe-url";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,6 +56,7 @@ export async function POST(req: Request) {
     if (!company) throw new HttpError(400, "Company is required");
     if (!role) throw new HttpError(400, "Role is required");
     if (!url) throw new HttpError(400, "Apply URL is required");
+    if (!isSafeHttpUrl(url)) throw new HttpError(400, "Apply URL must be a valid http(s) link");
 
     const now = new Date();
     const record = await db.transaction(async (tx) => {

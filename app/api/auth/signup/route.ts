@@ -4,12 +4,20 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { hashPassword } from "@/lib/jwt";
 import { pickColorForNewUser } from "@/lib/user-colors";
+import { rateLimiter, clientIp, RATE_LIMIT_WINDOW_MS, IP_LIMITS } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
+    if (!rateLimiter.hit(`signup:${clientIp(req)}`, IP_LIMITS.signup, RATE_LIMIT_WINDOW_MS)) {
+      return NextResponse.json(
+        { ok: false, error: "Too many signups. Please wait and try again in 15 minutes." },
+        { status: 429 }
+      );
+    }
+
     const { name, email, password } = await req.json().catch(() => ({}));
     const cleanEmail = String(email || "").trim().toLowerCase();
     if (!cleanEmail || !password) {
