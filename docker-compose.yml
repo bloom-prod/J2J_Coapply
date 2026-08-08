@@ -21,7 +21,8 @@ services:
       - proxy
 
 networks:
+  # Join the existing external network where jobless-db-prod / jobless-s3-prod live.
   jobless:
-    driver: bridge
+    external: true
   proxy:
     external: true
