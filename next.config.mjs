@@ -16,6 +16,14 @@ const nextConfig = {
           { key: "Service-Worker-Allowed", value: "/" },
         ],
       },
+      {
+        // Force a fresh load for every visitor: never cache the app's HTML, so
+        // a deploy always shows up on the next page load (no stale shell).
+        source: "/((?!api|_next|sw\\.js|favicon|icon-|manifest\\.webmanifest|android-chrome).*)",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, no-store, max-age=0, must-revalidate" },
+        ],
+      },
     ];
   },
 };

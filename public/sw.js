@@ -1,4 +1,4 @@
-const CACHE_NAME = "bloom-v2";
+const CACHE_NAME = "bloom-v4";
 const SHELL = ["/", "/favicon.svg", "/icon-192x192.png", "/icon-512x512.png"];
 
 self.addEventListener("install", (event) => {
@@ -21,49 +21,25 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// Network-first: when online, always fetch fresh so a deploy shows up on the
+// next load. The cache is only a fallback for offline.
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
-  const isSameOrigin = url.origin === self.location.origin;
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith("/api/")) return;
 
-  // Never cache API calls
-  if (isSameOrigin && url.pathname.startsWith("/api/")) return;
-
-  // Home / shell: serve cached shell if offline
-  if (isSameOrigin && url.pathname === "/") {
-    event.respondWith(
-      caches.match("/").then((cached) => cached || fetch(request))
-    );
-    return;
-  }
-
-  // Static assets: stale-while-revalidate
-  if (
-    isSameOrigin &&
-    /\.(js|css|svg|png|jpg|jpeg|gif|webp|woff|woff2|ttf|otf|ico)$/i.test(url.pathname)
-  ) {
-    event.respondWith(
-      caches.match(request).then((cached) => {
-        const fetched = fetch(request)
-          .then((networkRes) => {
-            if (networkRes && networkRes.status === 200 && networkRes.type === "basic") {
-              const clone = networkRes.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-            }
-            return networkRes;
-          })
-          .catch(() => cached);
-        return cached || fetched;
-      })
-    );
-    return;
-  }
-
-  // Everything else: try network, fall back to cached shell
   event.respondWith(
     fetch(request)
+      .then((res) => {
+        if (res.status === 200 && (res.type === "basic" || res.type === "default")) {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        }
+        return res;
+      })
       .catch(() => caches.match(request).then((cached) => cached || caches.match("/")))
   );
 });
