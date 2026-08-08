@@ -62,3 +62,19 @@ export async function namesByIds(db: PostgresJsDatabase<any> | PgTransaction<any
   }
   return out;
 }
+
+/**
+ * Drop a cached name so it's re-read on the next request — call this whenever a
+ * user renames, otherwise server-rendered owner/creator names go stale until
+ * the process restarts.
+ */
+export function invalidateName(id: string): void {
+  if (id) nameCache.delete(id);
+}
+
+/**
+ * Drop all cached names (e.g. after a bulk rename/migration).
+ */
+export function clearNameCache(): void {
+  nameCache.clear();
+}

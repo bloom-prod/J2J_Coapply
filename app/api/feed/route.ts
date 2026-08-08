@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   try {
     await requireUser(req);
     const url = new URL(req.url);
-    const limitN = Math.min(parseInt(url.searchParams.get("limit") || "50", 10) || 50, 200);
+    const limitN = Math.max(1, Math.min(parseInt(url.searchParams.get("limit") || "50", 10) || 50, 200));
 
     const rows = await db.select().from(activityLog).orderBy(desc(activityLog.occuredAt)).limit(limitN);
     const nameById = await namesByIds(db, rows.map((r) => r.userId));

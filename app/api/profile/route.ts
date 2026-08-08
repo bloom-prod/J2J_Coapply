@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
+import { invalidateName } from "@/db/activity";
 import { resolveUserColor } from "@/lib/user-colors";
 import { isSafeHttpUrl } from "@/lib/safe-url";
 
@@ -79,6 +80,9 @@ export async function PUT(req: Request) {
       .update(users)
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(users.id, user.id));
+
+    // Renames must clear the server-side name cache used by activity feeds.
+    if (updates.name) invalidateName(user.id);
 
     return NextResponse.json({ ok: true });
   } catch (err) {

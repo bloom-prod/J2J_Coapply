@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { eq, asc } from "drizzle-orm";
 import { db } from "@/db";
-import { ivpComments } from "@/db/schema";
+import { ivpComments, interviewPrep } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
 import { namesByIds } from "@/db/activity";
 
@@ -60,6 +60,11 @@ export async function POST(req: Request) {
 
     if (!postId) throw new HttpError(400, "Missing postId");
     if (!text) throw new HttpError(400, "Comment text is required");
+
+    const post = await db.query.interviewPrep.findFirst({
+      where: eq(interviewPrep.postId, postId),
+    });
+    if (!post) throw new HttpError(404, "Post not found");
 
     const [comment] = await db
       .insert(ivpComments)

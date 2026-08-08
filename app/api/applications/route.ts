@@ -176,6 +176,7 @@ export async function PUT(req: Request) {
       if (k === "recruiter") { patch.recruiterName = data[k]; continue; }
       patch[k] = data[k];
     }
+    if (data.starred !== undefined) patch.starred = data.starred === true;
 
     const now = new Date();
     const newStatusDisplay = data.status as string | undefined;
