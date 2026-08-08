@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase-admin";
+import { and, ne } from "drizzle-orm";
+import { db } from "@/db";
+import { applications, applicationUserStatus, users } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
+import { enumToStatus, enumToRoleCategory } from "@/lib/enums";
 import { classifyRole } from "@/lib/job-utils";
 import { resolveUserColor } from "@/lib/user-colors";
 import {
   STATUSES,
   FUNNEL_STAGES,
-  REACHED_FLAG_KEYS,
   reachedStage,
+  reachedFlagsForStatus,
   type ReachedFlag,
 } from "@/lib/types";
 
@@ -17,20 +20,19 @@ export const dynamic = "force-dynamic";
 const rate = (part: number, total: number) =>
   total ? Math.round((part / total) * 100) : 0;
 
-/** Pull the sticky reached* booleans off a raw doc, ignoring anything that
- *  isn't literally `true` (legacy docs may store them as strings or omit them). */
-function pickReachedFlags(doc: Record<string, unknown>): Partial<Record<ReachedFlag, boolean>> {
-  const out: Partial<Record<ReachedFlag, boolean>> = {};
-  for (const k of REACHED_FLAG_KEYS) {
-    if (doc[k] === true) out[k] = true;
-  }
-  return out;
+/** Format a Postgres `date` value back to YYYY-MM-DD (the shape Firestore
+ *  stored / the client chart keys expect). Already-string dates pass through. */
+function dateStr(d: string | Date | null): string {
+  if (!d) return "";
+  if (typeof d === "string") return d;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
-const str = (v: unknown): string => (typeof v === "string" ? v : "");
-
-function weekMonday(dateStr: string): string {
-  const d = new Date(dateStr + "T00:00:00");
+function weekMonday(dateStrIn: string): string {
+  const d = new Date(dateStrIn + "T00:00:00");
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
   return d.toISOString().slice(0, 10);
 }
@@ -39,24 +41,46 @@ export async function GET(req: Request) {
   try {
     await requireUser(req); // any signed-in user may view community stats
 
-    const [appsSnap, profilesSnap] = await Promise.all([
-      adminDb.collection("applications").get(),
-      adminDb.collection("userProfiles").get(),
+    const [apps, statusLogs, userRows] = await Promise.all([
+      db.select().from(applications),
+      db.select().from(applicationUserStatus),
+      db
+        .select({ id: users.id, name: users.name, userColor: users.userColor })
+        .from(users)
+        .where(and(ne(users.isAdmin, true), ne(users.email, "system@jobless.local"))),
     ]);
 
-    // Build uid -> name and name -> color maps from userProfiles
+    // Build uid -> name and name -> color maps from users (replaces userProfiles)
     const uidToName = new Map<string, string>();
     const userColors: Record<string, string> = {};
-    profilesSnap.docs.forEach((doc) => {
-      const data = doc.data();
-      const name = (data.name as string) || "Someone";
-      const color = resolveUserColor(doc.id, name, data.color as string | undefined);
-      uidToName.set(doc.id, name);
-      userColors[name] = color;
+    userRows.forEach((u) => {
+      const name = u.name || "Someone";
+      uidToName.set(u.id, name);
+      userColors[name] = resolveUserColor(u.id, name, u.userColor ?? undefined);
     });
 
     // Never returns a raw UID — falls back to "Someone"
     const resolveName = (uid: string) => uidToName.get(uid) || "Someone";
+
+    // Sticky funnel history per application, recovered from the status log
+    // (replaces the reached* booleans Firestore stored on the doc).
+    const history = new Map<string, Set<string>>();
+    statusLogs.forEach((s) => {
+      if (!history.has(s.applicationId)) history.set(s.applicationId, new Set());
+      history.get(s.applicationId)!.add(s.status);
+    });
+    const flagsFor = (applicationId: string): Partial<Record<ReachedFlag, boolean>> => {
+      const flags: Partial<Record<ReachedFlag, boolean>> = {};
+      const seen = history.get(applicationId);
+      if (seen) {
+        for (const se of seen) {
+          if (!se) continue;
+          const disp = enumToStatus(se);
+          if (disp) Object.assign(flags, reachedFlagsForStatus(disp));
+        }
+      }
+      return flags;
+    };
 
     const statusCounts: Record<string, number> = {};
     STATUSES.forEach((s) => (statusCounts[s] = 0));
@@ -67,7 +91,7 @@ export async function GET(req: Request) {
     FUNNEL_STAGES.forEach((s) => (funnelCounts[s] = 0));
     const companyCounts: Record<string, number> = {};
     const monthly: Record<string, number> = {};
-    const users = new Set<string>();
+    const seenUsers = new Set<string>();
 
     let total = 0;
     let oAish = 0;
@@ -89,18 +113,16 @@ export async function GET(req: Request) {
     const roleCatByUser: Record<string, Record<string, number>> = {};
     const roleCatUserCounts: Record<string, number> = {};
 
-    appsSnap.forEach((doc) => {
-      const j = doc.data() as Record<string, unknown>;
+    apps.forEach((j) => {
       total++;
-      if (j.ownerUid) users.add(j.ownerUid as string);
+      if (j.applicantId) seenUsers.add(j.applicantId);
 
-      const status = (j.status as string) || "Applied";
+      const status = enumToStatus(j.status) || "Applied";
       statusCounts[status] = (statusCounts[status] || 0) + 1;
 
-      // Sticky funnel flags live on the doc (reachedApplied / reachedOA / ...).
-      // reachedStage honors the flag, then falls back to the current status's
-      // rank so legacy docs without flags still count.
-      const job = { status, ...pickReachedFlags(j) } as { status: string } & Partial<Record<ReachedFlag, boolean>>;
+      // Sticky funnel flags come from the status history, falling back to the
+      // current status's rank so apps without a log still count.
+      const job = { status, ...flagsFor(j.applicationId) } as { status: string } & Partial<Record<ReachedFlag, boolean>>;
       for (let i = 0; i < FUNNEL_STAGES.length; i++) {
         if (reachedStage(job, i)) funnelCounts[FUNNEL_STAGES[i]]++;
       }
@@ -108,14 +130,14 @@ export async function GET(req: Request) {
       if (reachedStage(job, 3)) interviewish++;      // ever reached Interview / Offer
       if (reachedStage(job, 4)) offers++;             // ever got an Offer
       // Responded = the company took an action (OA / screen / interview / offer,
-      // or a rejection). Sticky flags catch apps that later went to Ghosted /
+      // or a rejection). History flags catch apps that later went to Ghosted /
       // Withdrawn after a real response; the explicit Rejected check catches
-      // direct rejections that never set a flag.
+      // direct rejections.
       if (reachedStage(job, 1) || status === "Rejected") responded++;
 
-      const company = str(j.company);
-      const date = str(j.date);
-      const ownerUid = str(j.ownerUid);
+      const company = j.company || "";
+      const date = dateStr(j.appliedDate);
+      const ownerUid = j.applicantId;
       if (company) companyCounts[company] = (companyCounts[company] || 0) + 1;
       if (date) {
         const m = date.slice(0, 7);
@@ -137,7 +159,7 @@ export async function GET(req: Request) {
         }
 
         // Role category per-user
-        const cat = str(j.roleCategory) || classifyRole(str(j.role));
+        const cat = (j.roleCategory ? enumToRoleCategory(j.roleCategory) : "") || classifyRole(j.role || "");
         if (cat) {
           if (!roleCatByUser[cat]) roleCatByUser[cat] = {};
           roleCatByUser[cat][name] = (roleCatByUser[cat][name] || 0) + 1;
@@ -155,7 +177,7 @@ export async function GET(req: Request) {
       .sort((a, b) => (a[0] > b[0] ? 1 : -1))
       .map(([month, count]) => ({ month, count }));
 
-    const totalUsers = users.size;
+    const totalUsers = seenUsers.size;
 
     // Top 10 users by weekly application volume
     const weeklyUsers = Object.entries(weeklyUserCounts)

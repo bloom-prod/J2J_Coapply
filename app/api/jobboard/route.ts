@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
-import { adminDb } from "@/lib/firebase-admin";
+import { eq, desc } from "drizzle-orm";
+import { db } from "@/db";
+import { jobboard } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
+import { logActivity, namesByIds } from "@/db/activity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const JOBBOARD = "jobBoard";
-const FEED = "feed";
 
 function fail(status: number, error: string) {
   return NextResponse.json({ ok: false, error }, { status });
@@ -16,29 +15,27 @@ function fail(status: number, error: string) {
 export async function GET(req: Request) {
   try {
     await requireUser(req);
-    const snap = await adminDb.collection(JOBBOARD).orderBy("createdAt", "desc").get();
-    // Fetch userProfiles to resolve names
-    const profilesSnap = await adminDb.collection("userProfiles").get();
-    const uidToName = new Map();
-    profilesSnap.docs.forEach((d) => {
-      const name = d.data().name;
-      if (name) uidToName.set(d.id, name);
-    });
+    const rows = await db
+      .select()
+      .from(jobboard)
+      .orderBy(desc(jobboard.createdAt));
 
-    const posts = snap.docs.map((d) => {
-      const x = d.data();
-      const ownerUid = x.ownerUid || "";
-      const ownerName = uidToName.get(ownerUid) || "";
+    // Resolve owner names
+    const nameById = await namesByIds(db, rows.map((r) => r.postedBy));
+
+    const posts = rows.map((r) => {
+      const ownerUid = r.postedBy || "";
+      const ownerName = nameById[r.postedBy] || "";
       return {
-        id: d.id,
-        company: x.company || "",
-        role: x.role || "",
-        url: x.url || "",
-        location: x.location || "",
-        notes: x.notes || "",
+        id: r.postId,
+        company: r.company || "",
+        role: r.jobRole || "",
+        url: r.jobUrl || "",
+        location: r.jobLocation || "",
+        notes: r.jobNotes || "",
         ownerUid,
         ownerName,
-                postedAt: x.createdAt?.toDate?.()?.toISOString?.() ?? "",
+        postedAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : "",
       };
     });
     return NextResponse.json({ ok: true, posts });
@@ -59,27 +56,33 @@ export async function POST(req: Request) {
     if (!role) throw new HttpError(400, "Role is required");
     if (!url) throw new HttpError(400, "Apply URL is required");
 
-    const now = FieldValue.serverTimestamp();
-    const ref = await adminDb.collection(JOBBOARD).add({
-      company,
-      role,
-      url,
-      location: String(body.location || "").trim(),
-      notes: String(body.notes || "").trim(),
-      ownerUid: user.uid,
-      createdAt: now,
+    const now = new Date();
+    const record = await db.transaction(async (tx) => {
+      const [post] = await tx
+        .insert(jobboard)
+        .values({
+          company,
+          jobRole: role,
+          jobUrl: url,
+          jobLocation: String(body.location || "").trim(),
+          jobNotes: String(body.notes || "").trim(),
+          postedBy: user.id,
+          createdAt: now,
+        })
+        .returning();
+
+      await logActivity(tx, {
+        userId: user.id,
+        type: "JOB_SHARE",
+        company,
+        role,
+        status: "",
+        occuredAt: now,
+      });
+      return post;
     });
 
-    await adminDb.collection(FEED).add({
-      type: "job_share",
-      company,
-      role,
-      status: "",
-      ownerUid: user.uid,
-      ts: FieldValue.serverTimestamp(),
-    });
-
-    return NextResponse.json({ ok: true, id: ref.id });
+    return NextResponse.json({ ok: true, id: record.postId });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);
     return fail(500, err instanceof Error ? err.message : "Server error");
@@ -93,12 +96,12 @@ export async function DELETE(req: Request) {
     const id = String(body.id || "").trim();
     if (!id) throw new HttpError(400, "Missing post id");
 
-    const ref = adminDb.collection(JOBBOARD).doc(id);
-    const snap = await ref.get();
-    if (!snap.exists) return NextResponse.json({ ok: true });
-    const existing = snap.data() as Record<string, unknown>;
-    if (existing.ownerUid !== user.uid) throw new HttpError(403, "You can only delete your own posts");
-    await ref.delete();
+    const existing = await db.query.jobboard.findFirst({
+      where: eq(jobboard.postId, id),
+    });
+    if (!existing) return NextResponse.json({ ok: true });
+    if (existing.postedBy !== user.id) throw new HttpError(403, "You can only delete your own posts");
+    await db.delete(jobboard).where(eq(jobboard.postId, id));
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);

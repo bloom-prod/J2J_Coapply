@@ -6,3 +6,7 @@ node_modules
 *.md
 .env.local
 .env*.local
+# Cron env files carry secrets — pass them via compose env_file at runtime,
+# don't bake them into the image.
+cron/*/.env
+cron/**/.env

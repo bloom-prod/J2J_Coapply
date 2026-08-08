@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
-import { adminDb } from "@/lib/firebase-admin";
+import { eq, desc } from "drizzle-orm";
+import { db } from "@/db";
+import { interviewPrep } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
+import { namesByIds } from "@/db/activity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const COLLECTION = "interviewPrep";
 
 function fail(status: number, error: string) {
   return NextResponse.json({ ok: false, error }, { status });
@@ -15,28 +15,26 @@ function fail(status: number, error: string) {
 export async function GET(req: Request) {
   try {
     await requireUser(req);
-    const snap = await adminDb.collection(COLLECTION).orderBy("createdAt", "desc").get();
-    // Fetch userProfiles to resolve names
-    const profilesSnap = await adminDb.collection("userProfiles").get();
-    const uidToName = new Map();
-    profilesSnap.docs.forEach((d) => {
-      const name = d.data().name;
-      if (name) uidToName.set(d.id, name);
-    });
+    const rows = await db
+      .select()
+      .from(interviewPrep)
+      .orderBy(desc(interviewPrep.createdAt));
 
-    const posts = snap.docs.map((d) => {
-      const x = d.data();
-      const ownerUid = x.ownerUid || "";
-      const ownerName = uidToName.get(ownerUid) || "";
+    // Resolve creator names
+    const nameById = await namesByIds(db, rows.map((r) => r.creatorId));
+
+    const posts = rows.map((r) => {
+      const ownerUid = r.creatorId || "";
+      const ownerName = nameById[r.creatorId] || "";
       return {
-        id: d.id,
-        title: x.title || "",
-        content: x.content || "",
-        company: x.company || "general",
+        id: r.postId,
+        title: r.postTitle || "",
+        content: r.postContent || "",
+        company: r.company || "general",
         ownerUid,
         ownerName,
-                createdAt: x.createdAt?.toDate?.()?.toISOString?.() ?? "",
-        updatedAt: x.updatedAt?.toDate?.()?.toISOString?.() ?? "",
+        createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : "",
+        updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : "",
       };
     });
     return NextResponse.json({ ok: true, posts });
@@ -57,17 +55,20 @@ export async function POST(req: Request) {
     if (!title) throw new HttpError(400, "Title is required");
     if (!content) throw new HttpError(400, "Content is required");
 
-    const now = FieldValue.serverTimestamp();
-    const ref = await adminDb.collection(COLLECTION).add({
-      title,
-      content,
-      company,
-      ownerUid: user.uid,
-      createdAt: now,
-      updatedAt: now,
-    });
+    const now = new Date();
+    const [post] = await db
+      .insert(interviewPrep)
+      .values({
+        postTitle: title,
+        postContent: content,
+        company,
+        creatorId: user.id,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
 
-    return NextResponse.json({ ok: true, id: ref.id });
+    return NextResponse.json({ ok: true, id: post.postId });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);
     return fail(500, err instanceof Error ? err.message : "Server error");
@@ -81,12 +82,12 @@ export async function DELETE(req: Request) {
     const id = String(body.id || "").trim();
     if (!id) throw new HttpError(400, "Missing post id");
 
-    const ref = adminDb.collection(COLLECTION).doc(id);
-    const snap = await ref.get();
-    if (!snap.exists) return NextResponse.json({ ok: true });
-    const existing = snap.data() as Record<string, unknown>;
-    if (existing.ownerUid !== user.uid) throw new HttpError(403, "You can only delete your own posts");
-    await ref.delete();
+    const existing = await db.query.interviewPrep.findFirst({
+      where: eq(interviewPrep.postId, id),
+    });
+    if (!existing) return NextResponse.json({ ok: true });
+    if (existing.creatorId !== user.id) throw new HttpError(403, "You can only delete your own posts");
+    await db.delete(interviewPrep).where(eq(interviewPrep.postId, id));
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);

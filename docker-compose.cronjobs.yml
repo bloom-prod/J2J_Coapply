@@ -1,0 +1,40 @@
+# Cron jobs for the migrated stack. Both services run the SAME app image (whose
+# runner now ships /app/cron) against the shared `jobless` network so they can
+# reach jobless-db-prod by hostname. Secrets come from each module's .env via
+# env_file (NOT baked into the image).
+#
+# These run once per invocation — schedule them with the host's crontab, e.g.:
+#   0  *  * * *  docker compose -f /home/pxndey/srv/jobless/docker-compose.cronjobs.yml run --rm sync-leetcode
+#   0  6  * * *  docker compose -f /home/pxndey/srv/jobless/docker-compose.cronjobs.yml run --rm daily-email
+#
+# Build the shared image once:  docker compose -f docker-compose.cronjobs.yml build
+services:
+  sync-leetcode:
+    image: jobless-cron:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jobless-cron-sync-leetcode
+    command: ["node", "cron/sync-leetcode/sync-leetcode.js"]
+    env_file:
+      - cron/sync-leetcode/.env
+    restart: "no"
+    networks:
+      - jobless
+
+  daily-email:
+    image: jobless-cron:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jobless-cron-daily-email
+    command: ["node", "cron/daily-email/daily-email.js"]
+    env_file:
+      - cron/daily-email/.env
+    restart: "no"
+    networks:
+      - jobless
+
+networks:
+  jobless:
+    external: true

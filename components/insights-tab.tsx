@@ -1,10 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { STATUSES, FUNNEL_STAGES, reachedStage, type Job } from "@/lib/types";
 import { classifyRole } from "@/lib/job-utils";
 import { useDarkMode } from "@/hooks/use-dark-mode";
 import { TimelineTab } from "@/components/timeline-tab";
+import { StatusSankey, type SankeyLink } from "@/components/sankey";
+import { getToken } from "@/lib/client-auth";
+
+interface StatusHistoryApp {
+  id: string;
+  company: string;
+  role: string;
+  currentStatus: string;
+  history: { status: string; changedAt: string }[];
+}
 
 function weekMonday(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
@@ -127,6 +137,47 @@ export function InsightsTab({ jobs, onEdit }: { jobs: Job[]; onEdit: (j: Job) =>
 
   const [heatTip, setHeatTip] = useState<{ date: string; count: number; x: number; y: number } | null>(null);
   const dark = useDarkMode();
+
+  // Status-change history for the Sankey: fetch the user's application_user_status.
+  const [history, setHistory] = useState<StatusHistoryApp[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = getToken();
+        if (!token) return;
+        const res = await fetch("/api/applications/status-history", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok && d.ok) setHistory(d.applications || []);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Transition links: "Start" → first recorded status, then each consecutive
+  // pair within an application's history.
+  const sankeyLinks = useMemo<SankeyLink[]>(() => {
+    const m: Record<string, number> = {};
+    (history || []).forEach((app) => {
+      const h = app.history.map((x) => x.status).filter(Boolean);
+      if (!h.length) return;
+      m[`Start>${h[0]}`] = (m[`Start>${h[0]}`] || 0) + 1;
+      for (let i = 0; i + 1 < h.length; i++) {
+        const k = `${h[i]}>${h[i + 1]}`;
+        m[k] = (m[k] || 0) + 1;
+      }
+    });
+    return Object.entries(m).map(([key, value]) => {
+      const [source, target] = key.split(">");
+      return { source, target, value };
+    });
+  }, [history]);
 
   const noData = <div style={{ color: "var(--text-light)", fontSize: 13 }}>No data yet</div>;
 
@@ -293,6 +344,11 @@ export function InsightsTab({ jobs, onEdit }: { jobs: Job[]; onEdit: (j: Job) =>
           </div>
           ) : noData}
         </div>
+      </div>
+
+      <div className="ic" style={{ gridColumn: "1/-1" }}>
+        <div className="it">Application flow</div>
+        <StatusSankey links={sankeyLinks} dark={dark} />
       </div>
 
       <div style={{ gridColumn: "1/-1", marginTop: 14 }}>

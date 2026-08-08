@@ -1,11 +1,20 @@
 import { NextResponse } from "next/server";
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { adminDb } from "@/lib/firebase-admin";
+import { eq, sql } from "drizzle-orm";
+import { db } from "@/db";
+import { lcProblems, lcSolvedUser, users } from "@/db/schema";
+import { logActivity } from "@/db/activity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET || "";
+
+const DIFF_RAW_TO_ENUM: Record<string, "EASY" | "MEDIUM" | "HARD" | "UNKNOWN"> = {
+  easy: "EASY",
+  medium: "MEDIUM",
+  hard: "HARD",
+  unknown: "UNKNOWN",
+};
 
 function fail(status: number, error: string) {
   return NextResponse.json({ ok: false, error }, { status });
@@ -26,23 +35,27 @@ export async function GET(req: Request) {
   }
 
   try {
-    const profiles = await adminDb.collection("userProfiles").get();
-    const users: Array<{ uid: string; repoUrl: string; lastSyncedAt: string | null }> = [];
+    const rows = await db
+      .select({
+        id: users.id,
+        repoUrl: users.leetcodeRepoUrl,
+        lastSyncedAt: users.leetcodeLastSyncedAt,
+      })
+      .from(users);
 
-    profiles.forEach((doc) => {
-      const data = doc.data() as Record<string, unknown>;
-      const repoUrl = (data.leetcodeRepoUrl || "") as string;
+    const usersList: Array<{ uid: string; repoUrl: string; lastSyncedAt: string | null }> = [];
+    rows.forEach((u) => {
+      const repoUrl = u.repoUrl || "";
       if (repoUrl) {
-        const lastSynced = data.leetcodeLastSyncedAt;
-        users.push({
-          uid: doc.id,
+        usersList.push({
+          uid: u.id,
           repoUrl,
-          lastSyncedAt: lastSynced ? (lastSynced as Timestamp).toDate().toISOString() : null,
+          lastSyncedAt: u.lastSyncedAt ? u.lastSyncedAt.toISOString() : null,
         });
       }
     });
 
-    return NextResponse.json({ ok: true, users });
+    return NextResponse.json({ ok: true, users: usersList });
   } catch (err) {
     return fail(500, err instanceof Error ? err.message : "Server error");
   }
@@ -73,30 +86,59 @@ export async function POST(req: Request) {
     }
 
     const uid = body.uid;
-    const userName = body.userName || "Someone";
-    const batch = adminDb.batch();
-    
-    // Update user's last synced timestamp
-    const userRef = adminDb.collection("userProfiles").doc(uid);
-    batch.update(userRef, { leetcodeLastSyncedAt: FieldValue.serverTimestamp() });
+    const problems = body.problems;
 
-    // Write problems to root collection with userId
-    for (const p of body.problems) {
-      const ref = adminDb.collection("leetcodeProblems").doc(`${uid}_${p.problemId}`);
-      batch.set(ref, {
-        problemId: p.problemId,
-        title: p.title,
-        difficulty: p.difficulty,
-        language: p.language,
-        commitHash: p.commitHash,
-        solvedAt: p.solvedAt,
-        syncedAt: FieldValue.serverTimestamp(),
-        userId: uid,
-        userName: userName,
-      });
-    }
+    await db.transaction(async (tx) => {
+      // Update user's last synced timestamp
+      await tx.update(users).set({ leetcodeLastSyncedAt: new Date() }).where(eq(users.id, uid));
 
-    await batch.commit();
+      // Upsert each solve (problem metadata + per-solve record) and log it
+      for (const p of problems) {
+        const solvedAt = new Date(p.solvedAt);
+        const problemDifficulty = p.difficulty ? DIFF_RAW_TO_ENUM[p.difficulty] ?? null : null;
+
+        await tx
+          .insert(lcProblems)
+          .values({
+            problemId: p.problemId,
+            problemName: p.title,
+            problemDifficulty,
+          })
+          .onConflictDoUpdate({
+            target: lcProblems.problemId,
+            set: {
+              problemName: sql`${p.title}`,
+              problemDifficulty: sql`${problemDifficulty ?? null}`,
+            },
+          });
+
+        await tx
+          .insert(lcSolvedUser)
+          .values({
+            userId: uid,
+            problemId: p.problemId,
+            solvedAt,
+            languageUsed: p.language,
+            commitHash: p.commitHash,
+          })
+          .onConflictDoUpdate({
+            target: [lcSolvedUser.userId, lcSolvedUser.problemId],
+            set: {
+              solvedAt: sql`${solvedAt}`,
+              languageUsed: sql`${p.language ?? null}`,
+              commitHash: sql`${p.commitHash ?? null}`,
+            },
+          });
+
+        await logActivity(tx, {
+          userId: uid,
+          type: "LC_SOLVED",
+          problemId: p.problemId,
+          occuredAt: solvedAt,
+        });
+      }
+    });
+
     return NextResponse.json({ ok: true, synced: body.problems.length });
   } catch (err) {
     return fail(500, err instanceof Error ? err.message : "Server error");

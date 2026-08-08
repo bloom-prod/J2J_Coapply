@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { auth } from "@/lib/firebase";
+import { getToken } from "@/lib/client-auth";
 import type { Resume, ResumeComment } from "@/lib/types";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,8 @@ function fmtTime(iso: string) {
 }
 
 async function authedFetch(method: string, path: string, body?: unknown) {
-  const token = await auth.currentUser!.getIdToken();
+  const token = getToken();
+  if (!token) throw new Error("Not signed in");
   const res = await fetch(path, {
     method,
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

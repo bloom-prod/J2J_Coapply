@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { auth } from "@/lib/firebase";
+import { getCurrentUser } from "@/lib/client-auth";
 import { timeAgo } from "@/lib/job-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,7 +43,7 @@ export function InterviewPrepTab({
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
   const [companySearch, setCompanySearch] = useState("");
 
-  const myUid = auth.currentUser?.uid;
+  const myUid = getCurrentUser()?.id;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

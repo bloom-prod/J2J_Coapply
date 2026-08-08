@@ -22,5 +22,8 @@ dist/
 *.tsbuildinfo
 next-env.d.ts
 
+# uploaded files (resumes are private + stored in MinIO/S3, not the repo)
+public/uploads/
+
 .agents/
 .claude/

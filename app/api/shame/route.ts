@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
-import { FieldValue, Timestamp } from "firebase-admin/firestore";
-import { adminDb } from "@/lib/firebase-admin";
+import { eq, and, gte, lt, sql, ne } from "drizzle-orm";
+import { db } from "@/db";
+import { applications, users, dailyRoasts } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
 import { generateRoasts, generateSingleRoast } from "@/lib/gemini";
 import { NOT_YET_APPLIED_STATUS } from "@/lib/types";
+import { statusToEnum } from "@/lib/enums";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,8 +20,8 @@ const TZ = "America/New_York";
  *  Values come back as numbers so nothing depends on how ICU pads or formats
  *  them — rebuilding a parseable "YYYY-MM-DDTHH:mm:ssZ" string here is fragile
  *  (a single-digit minute, or an "24" hour under an h24 hour cycle, yields an
- *  unparseable string, and the resulting NaN propagates into the Firestore
- *  query as an Invalid Date). `hour % 24` folds the h24 midnight spelling. */
+ *  unparseable string, and the resulting NaN propagates into the query as an
+ *  Invalid Date). `hour % 24` folds the h24 midnight spelling. */
 function easternParts(d: Date) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: TZ,
@@ -82,9 +84,8 @@ function effectiveToday(): { dateStr: string; dayStart: Date; dayEnd: Date } {
   const dayEnd = new Date(`${shiftDateStr(dateStr, 1)}T06:00:00Z`);
   dayEnd.setTime(dayEnd.getTime() - offsetMs);
 
-  // Never hand an Invalid Date to Firestore: it surfaces as the opaque
-  // 'Value for argument "seconds" is not a valid integer' from Timestamp.fromDate,
-  // with nothing in the message pointing back at this window calculation.
+  // Never hand an Invalid Date to the DB: it surfaces as an opaque error with
+  // nothing pointing back at this window calculation.
   if (Number.isNaN(dayStart.getTime()) || Number.isNaN(dayEnd.getTime())) {
     throw new Error(
       `[shame] invalid day window: dateStr=${dateStr} offsetMs=${offsetMs} parts=${JSON.stringify(p)}`
@@ -101,15 +102,7 @@ export interface ShameEntry {
   roast: string;
 }
 
-interface RoastCache {
-  roasts?: Record<string, string>; // uid -> roast text
-  countMap?: Record<string, number>; // uid -> app count, for milestone detection
-  generating?: boolean;
-  generatingAt?: Timestamp;
-}
-
 const MILESTONES = [5, 10];
-const GENERATION_LOCK_TIMEOUT_MS = 30_000;
 
 export async function GET(req: Request) {
   try {
@@ -120,91 +113,69 @@ export async function GET(req: Request) {
     const { dateStr: today, dayStart, dayEnd } = effectiveToday();
     console.log("[shame] effectiveToday:", today, "| force:", forceRegen);
 
-    let appsSnap, profilesSnap;
+    let appsRows, userRows;
     try {
-      [appsSnap, profilesSnap] = await Promise.all([
-        adminDb
-          .collection("applications")
-          .where("createdAt", ">=", dayStart)
-          .where("createdAt", "<", dayEnd)
-          .get(),
-        adminDb.collection("userProfiles").get(),
+      [appsRows, userRows] = await Promise.all([
+        db
+          .select()
+          .from(applications)
+          .where(
+            and(
+              gte(applications.createdAt, dayStart),
+              lt(applications.createdAt, dayEnd)
+            )
+          ),
+        db
+          .select()
+          .from(users)
+          .where(and(ne(users.isAdmin, true), ne(users.email, "system@jobless.local"))),
       ]);
     } catch (dbErr) {
-      console.error("[shame] Firestore query FAILED:", dbErr);
+      console.error("[shame] DB query FAILED:", dbErr);
       throw dbErr;
     }
 
     // Count applications per user for today — exclude "Want to Apply" (not yet applied)
     const countsByUid: Record<string, number> = {};
-    appsSnap.forEach((doc) => {
-      const data = doc.data();
-      const uid = data.ownerUid as string;
-      if (!uid) return;
-      if (data.status === NOT_YET_APPLIED_STATUS) return;
-      countsByUid[uid] = (countsByUid[uid] || 0) + 1;
+    appsRows.forEach((doc) => {
+      const userId = doc.applicantId as string;
+      if (!userId) return;
+      if (doc.status === statusToEnum(NOT_YET_APPLIED_STATUS)) return;
+      countsByUid[userId] = (countsByUid[userId] || 0) + 1;
     });
 
-    const users: { uid: string; name: string }[] = [];
-    profilesSnap.forEach((doc) => {
-      const data = doc.data();
-      users.push({ uid: doc.id, name: (data.name as string) || "Someone" });
+    const userList: { uid: string; name: string }[] = userRows.map((u) => ({
+      uid: u.id,
+      name: u.name || "Someone",
+    }));
+
+    const cacheRows = await db
+      .select()
+      .from(dailyRoasts)
+      .where(eq(dailyRoasts.roastDate, today));
+
+    const cachedRoasts: Record<string, string> = {};
+    const cachedCountMap: Record<string, number> = {};
+    cacheRows.forEach((r) => {
+      if (r.roastText) cachedRoasts[r.userId] = r.roastText;
+      if (r.appsCount != null) cachedCountMap[r.userId] = r.appsCount;
     });
 
-    const cacheRef = adminDb.collection("dailyRoasts").doc(today);
-    const cacheDoc = await cacheRef.get();
-    const cached = cacheDoc.exists ? (cacheDoc.data() as RoastCache) : null;
-    // A doc without a `roasts` field is either a pre-migration cache (old code
-    // stored name-keyed roasts at the top level) or a lock-only doc from a
-    // request that claimed generation and died — both need fresh generation,
-    // otherwise everyone would see blank roasts for the rest of the day.
-    const needsGeneration = !cached?.roasts || forceRegen;
+    const countMap = Object.fromEntries(userList.map((u) => [u.uid, countsByUid[u.uid] || 0]));
+    const needsGeneration = Object.keys(cachedRoasts).length === 0 || forceRegen;
 
-    // Claim the generation slot atomically so two concurrent requests (e.g. the
-    // Shame Wall embed and the popup both fetching on mount) don't both pay for
-    // an LLM call and race to write the cache — whichever gets here first wins,
-    // the other reuses whatever's already cached (or waits for the next poll).
-    let claimedGeneration = false;
-    if (needsGeneration) {
-      claimedGeneration = await adminDb.runTransaction(async (tx) => {
-        const snap = await tx.get(cacheRef);
-        const data = snap.exists ? (snap.data() as RoastCache) : null;
-        const lockAgeMs = data?.generatingAt ? Date.now() - data.generatingAt.toDate().getTime() : Infinity;
-        if (data?.generating && lockAgeMs < GENERATION_LOCK_TIMEOUT_MS && !forceRegen) {
-          return false;
-        }
-        tx.set(cacheRef, { generating: true, generatingAt: FieldValue.serverTimestamp() }, { merge: true });
-        return true;
-      });
-    }
-
-    const cachedCountMap = cached?.countMap || {};
-    const countMap = Object.fromEntries(users.map((u) => [u.uid, countsByUid[u.uid] || 0]));
     let roastByUid: Record<string, string>;
 
-    if (needsGeneration && claimedGeneration) {
-      try {
-        const userApps = users.map((u) => ({ name: u.name, appsToday: countsByUid[u.uid] || 0 }));
-        const roastByName = await generateRoasts(userApps);
-        roastByUid = {};
-        users.forEach((u) => { roastByUid[u.uid] = roastByName[u.name] || ""; });
-        await cacheRef.set({ roasts: roastByUid, countMap, generating: false }, { merge: true });
-      } catch (genErr) {
-        // Release the lock immediately on failure so the next request can retry
-        // rather than waiting out the lock timeout.
-        await cacheRef.set({ generating: false }, { merge: true }).catch(() => {});
-        throw genErr;
-      }
-    } else if (needsGeneration && !claimedGeneration) {
-      // Another request is generating right now — serve whatever roasts exist
-      // (empty on the very first request of the day) WITHOUT touching the cache:
-      // writing here would clear the winner's `generating` lock mid-flight and
-      // let a third request start a duplicate LLM call.
-      roastByUid = { ...(cached?.roasts || {}) };
+    if (needsGeneration) {
+      const userApps = userList.map((u) => ({ name: u.name, appsToday: countsByUid[u.uid] || 0 }));
+      const roastByName = await generateRoasts(userApps);
+      roastByUid = {};
+      userList.forEach((u) => { roastByUid[u.uid] = roastByName[u.name] || ""; });
+      await writeRoasts(today, roastByUid, countMap);
     } else {
-      roastByUid = { ...(cached!.roasts || {}) };
+      roastByUid = { ...cachedRoasts };
       let regenerated = false;
-      for (const u of users) {
+      for (const u of userList) {
         const count = countsByUid[u.uid] || 0;
         const prev = cachedCountMap[u.uid] || 0;
         const crossedMilestone = MILESTONES.some((m) => count >= m && prev < m);
@@ -214,20 +185,15 @@ export async function GET(req: Request) {
         }
       }
       // Persist updated counts (and any milestone roasts) so milestone detection
-      // has a fresh baseline. Safe to write here: this branch only runs when no
-      // generation lock is in play.
+      // has a fresh baseline.
       try {
-        if (regenerated) {
-          await cacheRef.set({ roasts: roastByUid, countMap }, { merge: true });
-        } else {
-          await cacheRef.set({ countMap }, { merge: true });
-        }
+        await writeRoasts(today, roastByUid, countMap);
       } catch (cacheErr) {
         console.error("[shame] Cache write FAILED:", cacheErr);
       }
     }
 
-    const entries: ShameEntry[] = users.map((u) => {
+    const entries: ShameEntry[] = userList.map((u) => {
       const appsToday = countsByUid[u.uid] || 0;
       return { uid: u.uid, name: u.name, appsToday, roast: roastByUid[u.uid] || "" };
     });
@@ -244,4 +210,28 @@ export async function GET(req: Request) {
       { status }
     );
   }
+}
+
+async function writeRoasts(dateStr: string, roastByUid: Record<string, string>, countMap: Record<string, number>) {
+  await db.transaction(async (tx) => {
+    for (const [userId, roastText] of Object.entries(roastByUid)) {
+      await tx
+        .insert(dailyRoasts)
+        .values({
+          roastDate: dateStr,
+          userId,
+          roastText,
+          appsCount: countMap[userId] || 0,
+          generatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [dailyRoasts.roastDate, dailyRoasts.userId],
+          set: {
+            roastText,
+            appsCount: countMap[userId] || 0,
+            generatedAt: sql`${new Date()}`,
+          },
+        });
+    }
+  });
 }

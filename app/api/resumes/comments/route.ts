@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
-import { adminDb } from "@/lib/firebase-admin";
+import { eq, asc } from "drizzle-orm";
+import { db } from "@/db";
+import { resumeComments, resumes } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
+import { namesByIds } from "@/db/activity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const COMMENTS = "resumeComments";
-const RESUMES = "resumes";
 
 function fail(status: number, error: string) {
   return NextResponse.json({ ok: false, error }, { status });
@@ -20,32 +19,26 @@ export async function GET(req: Request) {
     const resumeId = url.searchParams.get("resumeId") || "";
     if (!resumeId) throw new HttpError(400, "Missing resumeId");
 
-    const snap = await adminDb
-      .collection(COMMENTS)
-      .where("resumeId", "==", resumeId)
-      .get();
+    const rows = await db
+      .select()
+      .from(resumeComments)
+      .where(eq(resumeComments.resumeId, resumeId))
+      .orderBy(asc(resumeComments.createdAt));
 
-    // Fetch userProfiles to resolve current names
-    const profilesSnap = await adminDb.collection("userProfiles").get();
-    const uidToName = new Map();
-    profilesSnap.docs.forEach((d) => {
-      const name = d.data().name;
-      if (name) uidToName.set(d.id, name);
-    });
+    // Resolve current names, fallback to stored name or "Someone"
+    const nameById = await namesByIds(db, rows.map((r) => r.commenterId));
 
-    const comments = snap.docs.map((d) => {
-      const x = d.data();
-      const userId = x.userId || "";
-      // Resolve current name from userProfiles, fallback to stored name or "Someone"
-      const userName = uidToName.get(userId) || x.userName || "Someone";
+    const comments = rows.map((r) => {
+      const userId = r.commenterId || "";
+      const userName = nameById[r.commenterId] || "Someone";
       return {
-        id: d.id,
-        resumeId: x.resumeId || "",
+        id: r.commentId,
+        resumeId: r.resumeId || "",
         userId,
         userName,
-        text: x.text || "",
-        createdAt: x.createdAt?.toDate?.()?.toISOString?.() ?? "",
-        resolved: x.resolved === true,
+        text: r.comment || "",
+        createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : "",
+        resolved: r.resolvedStatus === true,
       };
     });
     comments.sort((a, b) => (a.createdAt > b.createdAt ? 1 : -1));
@@ -66,22 +59,25 @@ export async function POST(req: Request) {
     if (!resumeId) throw new HttpError(400, "Missing resumeId");
     if (!text) throw new HttpError(400, "Comment text is required");
 
-    const resumeSnap = await adminDb.collection(RESUMES).doc(resumeId).get();
-    if (!resumeSnap.exists) throw new HttpError(404, "Resume not found");
-
-    const ref = await adminDb.collection(COMMENTS).add({
-      resumeId,
-      userId: user.uid,
-      userName: user.name,
-      text,
-      resolved: false,
-      createdAt: FieldValue.serverTimestamp(),
+    const resume = await db.query.resumes.findFirst({
+      where: eq(resumes.resumeId, resumeId),
     });
+    if (!resume) throw new HttpError(404, "Resume not found");
+
+    const [comment] = await db
+      .insert(resumeComments)
+      .values({
+        resumeId,
+        commenterId: user.id,
+        comment: text,
+        resolvedStatus: false,
+      })
+      .returning();
 
     return NextResponse.json({
       ok: true,
       comment: {
-        id: ref.id,
+        id: comment.commentId,
         resumeId,
         userId: user.uid,
         userName: user.name,
@@ -105,21 +101,24 @@ export async function PATCH(req: Request) {
     const resumeId = String(body.resumeId || "").trim();
     if (!id || !resumeId) throw new HttpError(400, "Missing id or resumeId");
 
-    const commentRef = adminDb.collection(COMMENTS).doc(id);
-    const [commentSnap, resumeSnap] = await Promise.all([
-      commentRef.get(),
-      adminDb.collection(RESUMES).doc(resumeId).get(),
+    const [comment, resume] = await Promise.all([
+      db.query.resumeComments.findFirst({
+        where: eq(resumeComments.commentId, id),
+      }),
+      db.query.resumes.findFirst({
+        where: eq(resumes.resumeId, resumeId),
+      }),
     ]);
-    if (!commentSnap.exists) throw new HttpError(404, "Comment not found");
+    if (!comment) throw new HttpError(404, "Comment not found");
 
-    const cData = commentSnap.data() as Record<string, unknown>;
-    const rData = resumeSnap.data() as Record<string, unknown> | undefined;
-
-    const isCommenter = cData.userId === user.uid;
-    const isResumeOwner = rData?.userId === user.uid;
+    const isCommenter = comment.commenterId === user.id;
+    const isResumeOwner = resume?.userId === user.id;
     if (!isCommenter && !isResumeOwner) throw new HttpError(403, "Not allowed");
 
-    await commentRef.update({ resolved: !cData.resolved });
+    await db
+      .update(resumeComments)
+      .set({ resolvedStatus: !comment.resolvedStatus })
+      .where(eq(resumeComments.commentId, id));
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);

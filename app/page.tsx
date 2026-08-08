@@ -122,7 +122,7 @@ export default function Page() {
             <i className="ti ti-download" /><span className="hidden sm:inline">Export CSV</span>
           </Button>
           <Button variant="outline" size="sm" className="rounded-full" onClick={() => setProfileOpen(true)}>
-            <i className="ti ti-user" /><span className="hidden sm:inline max-w-[120px] truncate">{bloom.user.displayName || bloom.user.email}</span>
+            <i className="ti ti-user" /><span className="hidden sm:inline max-w-[120px] truncate">{bloom.user.name || bloom.user.email}</span>
           </Button>
           <Button variant="outline" size="sm" className="rounded-full" onClick={() => bloom.signOut()}>
             <i className="ti ti-logout" /><span className="hidden sm:inline">Sign out</span>
@@ -163,7 +163,7 @@ export default function Page() {
                 <InterviewPrepTab
                   posts={bloom.interviewPrepPosts}
                   comments={bloom.interviewPrepComments}
-                  companies={[...new Set(bloom.myJobs.map((j) => j.company))]}
+                  companies={[...new Set(bloom.interviewPrepPosts.map((p) => p.company).filter(Boolean))]}
                   onCreate={bloom.createInterviewPrepPost}
                   onDelete={bloom.deleteInterviewPrepPost}
                   onAddComment={bloom.addInterviewPrepComment}
@@ -174,7 +174,7 @@ export default function Page() {
               <TabsContent value="resume" style={{ padding: 0 }}>
                 <ResumeTab
                   resumes={bloom.resumes}
-                  currentUid={bloom.user.uid}
+                  currentUid={bloom.user.id}
                   onUpload={bloom.uploadResume}
                   onDelete={bloom.deleteResume}
                 />

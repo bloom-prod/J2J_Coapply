@@ -16,7 +16,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { auth } from "@/lib/firebase";
+import { getToken, getCurrentUser } from "@/lib/client-auth";
 import { STATUSES, reachedStage, type CommunityStats, type FeedEvent, type Job } from "@/lib/types";
 import { timeAgo } from "@/lib/job-utils";
 import { useDarkMode } from "@/hooks/use-dark-mode";
@@ -108,7 +108,7 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
     let cancelled = false;
     (async () => {
       try {
-        const token = await auth.currentUser?.getIdToken();
+        const token = getToken();
         if (!token) return;
         const res = await fetch("/api/stats", { headers: { Authorization: `Bearer ${token}` } });
         const d = await res.json();
@@ -204,7 +204,8 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
       const uid = j.ownerUid;
       if (!uid) return;
       const serverName = stats?.uidToName?.[uid];
-      const userName = serverName || (uid === auth.currentUser?.uid ? (auth.currentUser.displayName || auth.currentUser.email || "You") : `User ${uid.slice(0, 6)}`);
+      const me = getCurrentUser();
+      const userName = serverName || (uid === me?.id ? (me?.name || me?.email || "You") : `User ${uid.slice(0, 6)}`);
       if (!by[uid]) by[uid] = { uid, name: userName, total: 0, interviews: 0, offers: 0, responded: 0 };
       const u = by[uid];
       if (j.status === "Want to Apply") return; // count after ensuring user exists
@@ -218,7 +219,7 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
   }, [allJobs, stats?.uidToName]);
 
   const dark = useDarkMode();
-  const myUid = auth.currentUser?.uid;
+  const myUid = getCurrentUser()?.id;
   const medal = (i: number) => (i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1);
 
   const card = (id: string, val: string | number, label: string, sage?: boolean, color?: string) => (

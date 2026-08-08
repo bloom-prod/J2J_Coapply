@@ -1,30 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import {
-  createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
-  signInWithEmailAndPassword,
-  updateProfile,
-} from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import Link from "next/link";
+import { signIn, signUp } from "@/lib/client-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 function prettyAuthError(e: unknown): string {
-  const c = (e as { code?: string })?.code || "";
-  if (c.includes("invalid-credential") || c.includes("wrong-password") || c.includes("user-not-found"))
-    return "Email or password is incorrect.";
-  if (c.includes("email-already-in-use")) return "That email already has an account — try logging in.";
-  if (c.includes("invalid-email")) return "That doesn't look like a valid email.";
-  if (c.includes("weak-password")) return "Password should be at least 6 characters.";
-  if (c.includes("operation-not-allowed")) return "Email/Password sign-in isn't enabled in Firebase.";
-  if (c.includes("network")) return "Network error — check your connection.";
-  if (c.includes("api-key") || c.includes("configuration"))
-    return "Firebase isn't configured yet — check the NEXT_PUBLIC_FIREBASE_* env vars.";
-  return (e as Error)?.message || "Something went wrong.";
+  const msg = e instanceof Error ? e.message : "";
+  if (/incorrect/i.test(msg)) return "Email or password is incorrect.";
+  if (/already has an account/i.test(msg)) return "That email already has an account — try logging in.";
+  if (/at least 6/i.test(msg)) return "Password should be at least 6 characters.";
+  if (/required/i.test(msg)) return "Missing required fields.";
+  if (/network|fetch/i.test(msg)) return "Network error — check your connection.";
+  return msg || "Something went wrong.";
 }
 
 export function AuthScreen() {
@@ -36,22 +27,9 @@ export function AuthScreen() {
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function forgotPassword() {
-    setError(""); setInfo("");
-    if (!email) { setError("Enter your email above first."); return; }
-    setBusy(true);
-    try {
-      await sendPasswordResetEmail(auth, email);
-      setInfo("Password reset email sent — check your inbox.");
-    } catch (e) {
-      setError(prettyAuthError(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function submit() {
-    setError(""); setInfo("");
+    setError("");
+    setInfo("");
     if (!email || !password) {
       setError("Email and password are required.");
       return;
@@ -64,14 +42,16 @@ export function AuthScreen() {
           setBusy(false);
           return;
         }
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
-        await updateProfile(cred.user, { displayName: name.trim() });
-        await cred.user.reload();
-        await cred.user.getIdToken(true); // refresh so the API sees the name claim
+        const result = await signUp(name.trim(), email, password);
+        if (result === "pending") {
+          setInfo("Account created — it's awaiting admin approval. You'll be able to log in once an admin approves it.");
+          setBusy(false);
+          return;
+        }
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        await signIn(email, password);
       }
-      // onAuthStateChanged in useBloom swaps to the app.
+      // onAuthChange in useBloom swaps to the app.
     } catch (e) {
       setError(prettyAuthError(e));
       setBusy(false);
@@ -164,14 +144,12 @@ export function AuthScreen() {
         </Button>
 
         {mode === "login" && (
-          <button
-            type="button"
-            onClick={forgotPassword}
-            disabled={busy}
-            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "var(--text-light)", textDecoration: "underline", padding: 0, marginTop: 4 }}
+          <Link
+            href="/reset-password"
+            style={{ display: "block", textAlign: "center", fontSize: 13, color: "var(--text-light)", textDecoration: "underline", padding: 0, marginTop: 4 }}
           >
             Forgot password?
-          </button>
+          </Link>
         )}
 
         <div className="auth-hint">
