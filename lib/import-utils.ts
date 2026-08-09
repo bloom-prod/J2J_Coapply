@@ -46,11 +46,12 @@ function fmtDate(v: string | number | null | undefined): string {
   // raw:true returns numbers. Handle a few common serials by parsing via Date.
   const n = Number(s);
   if (!isNaN(n) && n > 20000 && n < 90000) {
-    // Excel serial → JS date (days since 1899-12-30)
     const d = new Date(Math.round((n - 25569) * 86400 * 1000));
-    return d.toISOString().slice(0, 10);
+    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
   }
-  return s.slice(0, 10);
+  const parsed = new Date(s);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  return "";
 }
 
 function foldNotes(raw: RawRow): string {
