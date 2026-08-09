@@ -11,7 +11,7 @@ jobs:
       - name: Deploy
         run: |
           cd ~/srv/jobless
-          # Already pulled by checkout, now run your commands:
+          ./scripts/migrate-db.sh
           docker compose down
           docker compose up -d --build
       - name: Restart

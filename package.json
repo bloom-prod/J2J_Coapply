@@ -9,7 +9,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "node tests/shame-wall.test.mjs",
-    "test:db": "tsx tests/db-integration.test.ts"
+    "test:db": "tsx tests/db-integration.test.ts",
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1106.0",
