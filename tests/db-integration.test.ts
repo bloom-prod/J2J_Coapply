@@ -223,7 +223,20 @@ async function run(tx: Tx) {
     assert.strictEqual((await tx.select().from(resumeComments).where(eq(resumeComments.resumeId, res.resumeId))).length, 0, "comments cascade on resume delete");
   });
 
-  // ── LeetCode upserts (idempotent re-write) ─────────────────────────────
+  // ── Application date clears (PUT must send null, not "") ─────────────
+  await testAsync("applications update clears date columns with null", async () => {
+    const u = await makeUser(tx, uniq("dates") + "@test.dev");
+    const app = await makeApp(tx, u.id, "Applied");
+    await tx
+      .update(applications)
+      .set({ followUp: null, appliedDate: null, updatedAt: new Date() })
+      .where(eq(applications.applicationId, app.applicationId));
+    const [row] = await tx.select().from(applications).where(eq(applications.applicationId, app.applicationId));
+    assert.strictEqual(row!.followUp, null);
+    assert.strictEqual(row!.appliedDate, null);
+  });
+
+  // ── LeetCode upserts (idempotent re-write; same pattern as /api/leetcode/refresh) ─
   await testAsync("lc_problems + lc_solved_user upsert are idempotent", async () => {
     const u = await makeUser(tx, uniq("lc") + "@test.dev");
     const insert = () =>

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { lcProblems, lcSolvedUser, users } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
@@ -319,8 +319,8 @@ async function syncUser(
           .onConflictDoUpdate({
             target: lcProblems.problemId,
             set: {
-              problemName: sql`${p.title}`,
-              problemDifficulty: sql`${problemDifficulty ?? null}`,
+              problemName: p.title,
+              problemDifficulty,
             },
           });
 
@@ -336,9 +336,9 @@ async function syncUser(
           .onConflictDoUpdate({
             target: [lcSolvedUser.userId, lcSolvedUser.problemId],
             set: {
-              solvedAt: sql`${solvedAt}`,
-              languageUsed: sql`${p.language ?? null}`,
-              commitHash: sql`${p.commitHash ?? null}`,
+              solvedAt,
+              languageUsed: p.language ?? null,
+              commitHash: p.commitHash ?? null,
             },
           });
 
