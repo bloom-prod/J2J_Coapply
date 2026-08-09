@@ -248,7 +248,14 @@ export function ApplicationDialog({
           <Button onClick={save}>Save application</Button>
         </div>
 
-        <StatusHistoryDialog open={historyOpen} onOpenChange={setHistoryOpen} job={job} />
+        <StatusHistoryDialog
+          open={historyOpen}
+          onOpenChange={setHistoryOpen}
+          job={job}
+          onSaved={(status) => {
+            if (status) setForm((f) => ({ ...f, status }));
+          }}
+        />
       </DialogContent>
     </Dialog>
   );

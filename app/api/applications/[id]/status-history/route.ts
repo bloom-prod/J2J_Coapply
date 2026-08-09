@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { applications, applicationUserStatus } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
-import { statusToEnum } from "@/lib/enums";
+import { enumToStatus, statusToEnum } from "@/lib/enums";
+import { notifyChanges } from "@/lib/live";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,8 +13,9 @@ function fail(status: number, error: string) {
   return NextResponse.json({ ok: false, error }, { status });
 }
 
-// Append historical status rows to an application (backfill). Does NOT change
-// the application's current status. Each entry = { status: display, changedAt: "YYYY-MM-DD" }.
+// Append historical status rows to an application (backfill). After insert, the
+// application's current status is synced to the status with the latest
+// changedAt for that application. Each entry = { status: display, changedAt: "YYYY-MM-DD" }.
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   try {
     const user = await requireUser(req);
@@ -37,8 +39,33 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       rows.push({ applicationId: params.id, changedById: user.id, status: se, changedAt });
     }
 
-    await db.insert(applicationUserStatus).values(rows);
-    return NextResponse.json({ ok: true, added: rows.length });
+    const latest = await db.transaction(async (tx) => {
+      await tx.insert(applicationUserStatus).values(rows);
+
+      // Current status on applications must match the chronologically latest
+      // status-history row (by changed_at), not just the most recently edited one.
+      const [top] = await tx
+        .select({ status: applicationUserStatus.status })
+        .from(applicationUserStatus)
+        .where(eq(applicationUserStatus.applicationId, params.id))
+        .orderBy(desc(applicationUserStatus.changedAt))
+        .limit(1);
+
+      if (top && top.status !== app.status) {
+        await tx
+          .update(applications)
+          .set({ status: top.status, updatedAt: new Date() })
+          .where(eq(applications.applicationId, params.id));
+      }
+      return top?.status ?? app.status;
+    });
+
+    notifyChanges("applications");
+    return NextResponse.json({
+      ok: true,
+      added: rows.length,
+      status: latest ? enumToStatus(latest) : null,
+    });
   } catch (err) {
     if (err instanceof HttpError) return fail(err.statusCode, err.message);
     return fail(500, err instanceof Error ? err.message : "Server error");

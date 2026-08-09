@@ -27,10 +27,12 @@ export function StatusHistoryDialog({
   open,
   onOpenChange,
   job,
+  onSaved,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   job: Job | null;
+  onSaved?: (status: string | null) => void;
 }) {
   const [rows, setRows] = useState<Entry[]>([{ date: todayISO(), status: "Applied" }]);
   const [busy, setBusy] = useState(false);
@@ -64,6 +66,7 @@ export function StatusHistoryDialog({
       const d = await res.json().catch(() => ({}));
       if (!res.ok || !d.ok) throw new Error(d.error || "Save failed");
       toast.success(`Saved ${d.added ?? valid.length} past status${valid.length === 1 ? "" : "es"} 🌱`);
+      onSaved?.(typeof d.status === "string" ? d.status : null);
       onOpenChange(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Save failed");
@@ -82,7 +85,7 @@ export function StatusHistoryDialog({
         </DialogHeader>
 
         <div style={{ fontSize: 13, color: "var(--text-light)", marginBottom: 8 }}>
-          Backfill stages you reached earlier. These add to your history and funnel — they don't change the current status.
+          Backfill stages you reached earlier. These add to your history and funnel — the application&apos;s current status becomes the one with the latest date.
         </div>
 
         {rows.map((r, i) => (
