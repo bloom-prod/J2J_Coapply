@@ -213,8 +213,8 @@ export async function PUT(req: Request) {
       if (k === "status") continue; // handled below
       if (k === "priority") { patch.priority = priorityToEnum(data[k] as string) ?? "MEDIUM"; continue; }
       if (k === "roleCategory") { patch.roleCategory = data[k] ? roleCategoryToEnum(data[k] as string) : null; continue; }
-      if (k === "date") { patch.appliedDate = data[k]; continue; }
-      if (k === "followup") { patch.followUp = data[k]; continue; }
+      if (k === "date") { patch.appliedDate = (data[k] as string) || null; continue; }
+      if (k === "followup") { patch.followUp = (data[k] as string) || null; continue; }
       if (k === "recruiter") { patch.recruiterName = data[k]; continue; }
       patch[k] = data[k];
     }
