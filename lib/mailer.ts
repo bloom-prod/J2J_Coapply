@@ -38,3 +38,30 @@ export async function sendOtpEmail(to: string, otp: string): Promise<void> {
       `— bloom tracker 🌿`,
   });
 }
+
+export async function sendFeedbackEmail(opts: {
+  to: string;
+  fromUserEmail: string;
+  fromUserName: string;
+  fromUserId: string;
+  type: "bug" | "feature";
+  title: string;
+  body: string;
+  communityId?: string | null;
+}): Promise<void> {
+  const { to, fromUserEmail, fromUserName, fromUserId, type, title, body, communityId } = opts;
+  await transport().sendMail({
+    from: from(),
+    to,
+    subject: `bloom tracker — [${type}]: ${title}`,
+    text:
+      `New ${type} report from bloom tracker\n\n` +
+      `From: ${fromUserName} <${fromUserEmail}>\n` +
+      `User ID: ${fromUserId}\n` +
+      (communityId ? `Community ID: ${communityId}\n` : "") +
+      `Type: ${type}\n` +
+      `Title: ${title}\n\n` +
+      `${body}\n\n` +
+      `— bloom tracker 🌿`,
+  });
+}

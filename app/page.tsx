@@ -13,6 +13,7 @@ import { ProfileTab } from "@/components/profile-tab";
 import { ResumeTab } from "@/components/resume-tab";
 import { ApplicationDialog } from "@/components/application-dialog";
 import { ImportDialog } from "@/components/import-dialog";
+import { FeedbackDialog } from "@/components/feedback-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { CommunitySelector } from "@/components/community-selector";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -45,6 +46,7 @@ export default function Page() {
   const [editing, setEditing] = useState<Job | null>(null);
   const [prefill, setPrefill] = useState<Record<string, string> | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -120,6 +122,9 @@ export default function Page() {
           <CommunitySelector />
           <Button variant="outline" size="sm" className="rounded-full" onClick={exportCSV}>
             <i className="ti ti-download" /><span className="hidden sm:inline">Export CSV</span>
+          </Button>
+          <Button variant="outline" size="sm" className="rounded-full" onClick={() => setFeedbackOpen(true)}>
+            <i className="ti ti-message-report" /><span className="hidden sm:inline">Feedback</span>
           </Button>
           <Button variant="outline" size="sm" className="rounded-full" onClick={() => setProfileOpen(true)}>
             <i className="ti ti-user" /><span className="hidden sm:inline max-w-[120px] truncate">{bloom.user.name || bloom.user.email}</span>
@@ -214,6 +219,8 @@ export default function Page() {
           <ProfileTab profile={bloom.profile} updateProfile={bloom.updateProfile} jobs={bloom.myJobs} />
         </DialogContent>
       </Dialog>
+
+      <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
     </div>
   );
 }

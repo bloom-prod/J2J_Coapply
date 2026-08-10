@@ -61,4 +61,5 @@ export const IP_LIMITS = {
   signup: 10,
   resetAttempts: 5, // 5 wrong OTP guesses / 15 min per (email, IP)
   forgotPerEmail: 3, // 3 resets / 15 min per address (stop OTP inbox flood)
+  feedback: 10, // 10 feedback emails / 15 min per user or IP
 } as const;
