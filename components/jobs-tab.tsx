@@ -8,11 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { DiscoverTab } from "@/components/discover-tab";
 import type { Job, JobPost } from "@/lib/types";
 
 interface Props {
   posts: JobPost[];
   myJobs: Job[];
+  allJobs: Job[];
   onShare: (data: { company: string; role: string; url: string; location: string; notes: string }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onRefresh: () => Promise<void>;
@@ -51,7 +53,8 @@ function isAlreadyAppliedCompany(post: JobPost, myJobs: Job[]) {
   return myJobs.some((j) => isSameCompany(j.company, post.company));
 }
 
-export function JobsTab({ posts, myJobs, onShare, onDelete, onRefresh, onSaveToTracker }: Props) {
+export function JobsTab({ posts, myJobs, allJobs, onShare, onDelete, onRefresh, onSaveToTracker }: Props) {
+  const [view, setView] = useState<"board" | "discover">("board");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
@@ -119,10 +122,31 @@ export function JobsTab({ posts, myJobs, onShare, onDelete, onRefresh, onSaveToT
 
   const uniquePosters = new Set(visiblePosts.map((p) => p.ownerUid)).size;
 
+  if (view === "discover") {
+    return (
+      <div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <Button variant="outline" size="sm" className="rounded-full" onClick={() => setView("board")}>
+            💼 Job Board
+          </Button>
+          <Button size="sm" className="rounded-full">
+            🔍 Discover
+          </Button>
+        </div>
+        <DiscoverTab allJobs={allJobs} myJobs={myJobs} onSaveToTracker={onSaveToTracker} />
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="sec-header" style={{ marginBottom: 6 }}>
-        <span className="sec-title">💼 Job Board</span>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span className="sec-title">💼 Job Board</span>
+          <Button size="sm" className="rounded-full" variant="outline" onClick={() => setView("discover")}>
+            🔍 Discover
+          </Button>
+        </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Button variant="outline" size="sm" className="rounded-full" onClick={handleRefresh} disabled={refreshing}>
             <i className="ti ti-refresh" /> {refreshing ? "Refreshing…" : "Refresh"}

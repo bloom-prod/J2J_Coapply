@@ -112,9 +112,11 @@ export async function signUp(name: string, email: string, password: string): Pro
 export function signOut() {
   token = null;
   user = null;
+  activeCommunityId = null;
   if (typeof window !== "undefined") {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    localStorage.removeItem(COMMUNITY_KEY);
   }
   emit();
 }
