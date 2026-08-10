@@ -16,7 +16,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { getToken, getCurrentUser } from "@/lib/client-auth";
+import { getToken, getCurrentUser, authHeaders } from "@/lib/client-auth";
 import { STATUSES, reachedStage, type CommunityStats, type FeedEvent, type Job } from "@/lib/types";
 import { timeAgo } from "@/lib/job-utils";
 import { useDarkMode } from "@/hooks/use-dark-mode";
@@ -108,9 +108,8 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
     let cancelled = false;
     (async () => {
       try {
-        const token = getToken();
-        if (!token) return;
-        const res = await fetch("/api/stats", { headers: { Authorization: `Bearer ${token}` } });
+        if (!getToken()) return;
+        const res = await fetch("/api/stats", { headers: authHeaders() });
         const d = await res.json();
         if (!cancelled && d.ok) setStats(d);
       } catch {
