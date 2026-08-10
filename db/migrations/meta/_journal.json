@@ -29,6 +29,20 @@
       "when": 1786167207641,
       "tag": "0003_approvals",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786319027965,
+      "tag": "0004_add_communities",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786319781389,
+      "tag": "0005_community_scoped_tables",
+      "breakpoints": true
     }
   ]
 }

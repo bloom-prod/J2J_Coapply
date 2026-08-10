@@ -5,6 +5,7 @@ import { interviewPrep } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
 import { namesByIds } from "@/db/activity";
 import { notifyChanges } from "@/lib/live";
+import { getUserCommunityId } from "@/lib/community";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,10 +16,12 @@ function fail(status: number, error: string) {
 
 export async function GET(req: Request) {
   try {
-    await requireUser(req);
+    const user = await requireUser(req);
+    const communityId = await getUserCommunityId(user.id, req);
     const rows = await db
       .select()
       .from(interviewPrep)
+      .where(eq(interviewPrep.communityId, communityId))
       .orderBy(desc(interviewPrep.createdAt));
 
     // Resolve creator names
@@ -48,6 +51,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const user = await requireUser(req);
+    const communityId = await getUserCommunityId(user.id, req);
     const body = await req.json();
     const title = String(body.title || "").trim();
     const content = String(body.content || "").trim();
@@ -64,6 +68,7 @@ export async function POST(req: Request) {
         postContent: content,
         company,
         creatorId: user.id,
+        communityId,
         createdAt: now,
         updatedAt: now,
       })

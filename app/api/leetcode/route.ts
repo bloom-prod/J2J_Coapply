@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { lcProblems, lcSolvedUser, users } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
+import { getUserCommunityId, getCommunityMemberIds } from "@/lib/community";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +27,25 @@ function fail(status: number, error: string) {
 
 export async function GET(req: Request) {
   try {
-    await requireUser(req);
+    const user = await requireUser(req);
+    const communityId = await getUserCommunityId(user.id, req);
+    const memberIds = await getCommunityMemberIds(communityId);
+
+    if (!memberIds.length) {
+      return NextResponse.json({
+        ok: true,
+        totalUsers: 0,
+        totalSolved: 0,
+        avgPerUser: 0,
+        languageCounts: {},
+        difficultyCounts: {},
+        weeklyVolume: [],
+        weeklyData: [],
+        weeklyUsers: [],
+        userLeaderboard: [],
+        recentActivity: [],
+      });
+    }
 
     // Get all solves (metadata via lcProblems, names via users)
     const rows = await db
@@ -43,7 +62,7 @@ export async function GET(req: Request) {
       .leftJoin(lcProblems, eq(lcSolvedUser.problemId, lcProblems.problemId))
       .leftJoin(users, eq(lcSolvedUser.userId, users.id))
       // System / admin accounts aren't jobbing — keep them off the leaderboard.
-      .where(and(ne(users.isAdmin, true), ne(users.email, "system@jobless.local")));
+      .where(and(ne(users.isAdmin, true), ne(users.email, "system@jobless.local"), inArray(lcSolvedUser.userId, memberIds)));
 
     const languageCounts: Record<string, number> = {};
     const difficultyCounts: Record<string, number> = {};

@@ -22,6 +22,7 @@ export type ActivityInput = {
   status?: string | null;
   resumeId?: string | null;
   problemId?: string | null;
+  communityId?: string | null;
   occuredAt?: Date;
 };
 
@@ -39,6 +40,7 @@ export async function logActivity(tx: DBLike, input: ActivityInput) {
     status: input.status ?? null,
     resumeId: input.resumeId ?? null,
     problemId: input.problemId ?? null,
+    communityId: input.communityId ?? null,
     occuredAt: now,
   });
 }

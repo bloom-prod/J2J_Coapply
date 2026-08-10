@@ -120,6 +120,7 @@ export const resumes = pgTable(
       .references(() => users.id),
     fileName: text("file_name"),
     resumeTitle: text("resume_title"),
+    communityId: uuid("community_id"),
   },
   (t) => [
     index("resumes_user_id").on(t.userId),
@@ -202,6 +203,7 @@ export const activityLog = pgTable(
     status: text("status"),
     resumeId: uuid("resume_id").references(() => resumes.resumeId, { onDelete: "set null" }),
     problemId: text("problem_id").references(() => lcProblems.problemId, { onDelete: "set null" }),
+    communityId: uuid("community_id"),
   },
   (t) => [
     index("activity_log_occured").on(t.occuredAt),
@@ -246,6 +248,7 @@ export const interviewPrep = pgTable(
       .references(() => users.id),
     postTitle: text("post_title"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+    communityId: uuid("community_id"),
   },
   (t) => [
     index("ip_creator").on(t.creatorId),
@@ -289,6 +292,7 @@ export const jobboard = pgTable(
     jobUrl: text("job_url").notNull(),
     jobLocation: text("job_location"),
     jobNotes: text("job_notes"),
+    communityId: uuid("community_id"),
   },
   (t) => [
     index("jb_posted_by").on(t.postedBy),
@@ -310,6 +314,7 @@ export const dailyRoasts = pgTable(
     roastText: text("roast_text"),
     appsCount: integer("apps_count"),
     generatedAt: timestamp("generated_at", { withTimezone: true }).defaultNow(),
+    communityId: uuid("community_id"),
   },
   (t) => [
     primaryKey({ columns: [t.roastDate, t.userId] }),
@@ -330,5 +335,42 @@ export const passwordResets = pgTable(
   (t) => [
     index("password_resets_email").on(t.email),
     index("password_resets_email_created").on(t.email, t.createdAt),
+  ]
+);
+
+export const communities = pgTable(
+  "communities",
+  {
+    communityId: uuid("community_id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    inviteCode: text("invite_code").notNull().unique(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [
+    index("communities_created_by").on(t.createdBy),
+    index("communities_invite_code").on(t.inviteCode),
+  ]
+);
+
+export const communityMembers = pgTable(
+  "community_members",
+  {
+    communityId: uuid("community_id")
+      .notNull()
+      .references(() => communities.communityId, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role").notNull().default("member"),
+    joinedAt: timestamp("joined_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.communityId, t.userId] }),
+    index("cm_community").on(t.communityId),
+    index("cm_user").on(t.userId),
   ]
 );

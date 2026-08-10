@@ -6,7 +6,6 @@ import { AuthScreen } from "@/components/auth-screen";
 import { TrackerTab } from "@/components/tracker-tab";
 import { InsightsTab } from "@/components/insights-tab";
 import { CommunityTab } from "@/components/community-tab";
-import { DiscoverTab } from "@/components/discover-tab";
 import { LeetCodeTab } from "@/components/leetcode-tab";
 import { JobsTab } from "@/components/jobs-tab";
 import { InterviewPrepTab } from "@/components/interview-prep-tab";
@@ -15,6 +14,7 @@ import { ResumeTab } from "@/components/resume-tab";
 import { ApplicationDialog } from "@/components/application-dialog";
 import { ImportDialog } from "@/components/import-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { CommunitySelector } from "@/components/community-selector";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -103,7 +103,6 @@ export default function Page() {
     ["interview-prep", "🎤 Interview Prep"],
     ["resume", "📄 Resumes"],
     ["community", "🌍 Community"],
-    ["discover", "🔍 Discover"],
   ] as const;
 
   return (
@@ -118,6 +117,7 @@ export default function Page() {
         </div>
         <div className="topbar-right">
           <ThemeToggle />
+          <CommunitySelector />
           <Button variant="outline" size="sm" className="rounded-full" onClick={exportCSV}>
             <i className="ti ti-download" /><span className="hidden sm:inline">Export CSV</span>
           </Button>
@@ -157,7 +157,7 @@ export default function Page() {
                 <LeetCodeTab userColors={bloom.userColors} />
               </TabsContent>
               <TabsContent value="jobs">
-                <JobsTab posts={bloom.jobPosts} myJobs={bloom.myJobs} onShare={bloom.shareJob} onDelete={bloom.deleteJobPost} onRefresh={bloom.fetchJobPosts} onSaveToTracker={openPrefilled} />
+                <JobsTab posts={bloom.jobPosts} myJobs={bloom.myJobs} allJobs={bloom.allJobs} onShare={bloom.shareJob} onDelete={bloom.deleteJobPost} onRefresh={bloom.fetchJobPosts} onSaveToTracker={openPrefilled} />
               </TabsContent>
               <TabsContent value="interview-prep">
                 <InterviewPrepTab
@@ -181,9 +181,6 @@ export default function Page() {
               </TabsContent>
               <TabsContent value="community">
                 <CommunityTab allJobs={bloom.allJobs} feed={bloom.feed} userColors={bloom.userColors} />
-              </TabsContent>
-              <TabsContent value="discover">
-                <DiscoverTab allJobs={bloom.allJobs} myJobs={bloom.myJobs} onSaveToTracker={openPrefilled} />
               </TabsContent>
             </>
           )}

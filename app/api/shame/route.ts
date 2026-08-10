@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { eq, and, lt, ne } from "drizzle-orm";
+import { eq, and, lt, ne, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { users, dailyRoasts, applicationUserStatus } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
 import { generateRoasts, generateSingleRoast } from "@/lib/gemini";
 import { NOT_YET_APPLIED_STATUS } from "@/lib/types";
 import { statusToEnum } from "@/lib/enums";
+import { getUserCommunityId, getCommunityMemberIds } from "@/lib/community";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -106,7 +107,9 @@ const MILESTONES = [5, 10];
 
 export async function GET(req: Request) {
   try {
-    await requireUser(req);
+    const user = await requireUser(req);
+    const communityId = await getUserCommunityId(user.id, req);
+    const memberIds = await getCommunityMemberIds(communityId);
 
     const url = new URL(req.url);
     const forceRegen = url.searchParams.get("force") === "1";
@@ -117,23 +120,28 @@ export async function GET(req: Request) {
     try {
       const wantEnum = statusToEnum(NOT_YET_APPLIED_STATUS)!;
       [statusRows, userRows] = await Promise.all([
-        db
-          .select({
-            applicationId: applicationUserStatus.applicationId,
-            userId: applicationUserStatus.changedById,
-            changedAt: applicationUserStatus.changedAt,
-          })
-          .from(applicationUserStatus)
-          .where(
-            and(
-              ne(applicationUserStatus.status, wantEnum),
-              lt(applicationUserStatus.changedAt, dayEnd)
-            )
-          ),
-        db
-          .select()
-          .from(users)
-          .where(and(ne(users.isAdmin, true), ne(users.email, "system@jobless.local"))),
+        memberIds.length
+          ? db
+              .select({
+                applicationId: applicationUserStatus.applicationId,
+                userId: applicationUserStatus.changedById,
+                changedAt: applicationUserStatus.changedAt,
+              })
+              .from(applicationUserStatus)
+              .where(
+                and(
+                  ne(applicationUserStatus.status, wantEnum),
+                  lt(applicationUserStatus.changedAt, dayEnd),
+                  inArray(applicationUserStatus.changedById, memberIds)
+                )
+              )
+          : Promise.resolve([]),
+        memberIds.length
+          ? db
+              .select()
+              .from(users)
+              .where(and(ne(users.isAdmin, true), ne(users.email, "system@jobless.local"), inArray(users.id, memberIds)))
+          : Promise.resolve([]),
       ]);
     } catch (dbErr) {
       console.error("[shame] DB query FAILED:", dbErr);
@@ -173,7 +181,7 @@ export async function GET(req: Request) {
     const cacheRows = await db
       .select()
       .from(dailyRoasts)
-      .where(eq(dailyRoasts.roastDate, today));
+      .where(and(eq(dailyRoasts.roastDate, today), eq(dailyRoasts.communityId, communityId)));
 
     const cachedRoasts: Record<string, string> = {};
     const cachedCountMap: Record<string, number> = {};
@@ -192,7 +200,7 @@ export async function GET(req: Request) {
       const roastByName = await generateRoasts(userApps);
       roastByUid = {};
       userList.forEach((u) => { roastByUid[u.uid] = roastByName[u.name] || ""; });
-      await writeRoasts(today, roastByUid, countMap);
+      await writeRoasts(today, roastByUid, countMap, communityId);
     } else {
       roastByUid = { ...cachedRoasts };
       let regenerated = false;
@@ -208,7 +216,7 @@ export async function GET(req: Request) {
       // Persist updated counts (and any milestone roasts) so milestone detection
       // has a fresh baseline.
       try {
-        await writeRoasts(today, roastByUid, countMap);
+        await writeRoasts(today, roastByUid, countMap, communityId);
       } catch (cacheErr) {
         console.error("[shame] Cache write FAILED:", cacheErr);
       }
@@ -233,7 +241,7 @@ export async function GET(req: Request) {
   }
 }
 
-async function writeRoasts(dateStr: string, roastByUid: Record<string, string>, countMap: Record<string, number>) {
+async function writeRoasts(dateStr: string, roastByUid: Record<string, string>, countMap: Record<string, number>, communityId: string) {
   await db.transaction(async (tx) => {
     for (const [userId, roastText] of Object.entries(roastByUid)) {
       await tx
@@ -243,6 +251,7 @@ async function writeRoasts(dateStr: string, roastByUid: Record<string, string>, 
           userId,
           roastText,
           appsCount: countMap[userId] || 0,
+          communityId,
           generatedAt: new Date(),
         })
         .onConflictDoUpdate({
@@ -250,6 +259,7 @@ async function writeRoasts(dateStr: string, roastByUid: Record<string, string>, 
           set: {
             roastText,
             appsCount: countMap[userId] || 0,
+            communityId,
             generatedAt: new Date(),
           },
         });
