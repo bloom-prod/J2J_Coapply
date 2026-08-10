@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { activityLog } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
 import { namesByIds } from "@/db/activity";
+import { getUserCommunityId } from "@/lib/community";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,11 +17,12 @@ function fail(status: number, error: string) {
 // newest first.
 export async function GET(req: Request) {
   try {
-    await requireUser(req);
+    const user = await requireUser(req);
+    const communityId = await getUserCommunityId(user.id, req);
     const url = new URL(req.url);
     const limitN = Math.max(1, Math.min(parseInt(url.searchParams.get("limit") || "50", 10) || 50, 200));
 
-    const rows = await db.select().from(activityLog).orderBy(desc(activityLog.occuredAt)).limit(limitN);
+    const rows = await db.select().from(activityLog).where(eq(activityLog.communityId, communityId)).orderBy(desc(activityLog.occuredAt)).limit(limitN);
     const nameById = await namesByIds(db, rows.map((r) => r.userId));
 
     const events = rows.map((r) => ({

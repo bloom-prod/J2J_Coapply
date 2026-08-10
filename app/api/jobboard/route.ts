@@ -6,6 +6,7 @@ import { requireUser, HttpError } from "@/lib/auth-server";
 import { logActivity, namesByIds } from "@/db/activity";
 import { isSafeHttpUrl } from "@/lib/safe-url";
 import { notifyChanges } from "@/lib/live";
+import { getUserCommunityId } from "@/lib/community";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,10 +17,12 @@ function fail(status: number, error: string) {
 
 export async function GET(req: Request) {
   try {
-    await requireUser(req);
+    const user = await requireUser(req);
+    const communityId = await getUserCommunityId(user.id, req);
     const rows = await db
       .select()
       .from(jobboard)
+      .where(eq(jobboard.communityId, communityId))
       .orderBy(desc(jobboard.createdAt));
 
     // Resolve owner names
@@ -50,6 +53,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const user = await requireUser(req);
+    const communityId = await getUserCommunityId(user.id, req);
     const body = await req.json();
     const company = String(body.company || "").trim();
     const role = String(body.role || "").trim();
@@ -70,6 +74,7 @@ export async function POST(req: Request) {
           jobLocation: String(body.location || "").trim(),
           jobNotes: String(body.notes || "").trim(),
           postedBy: user.id,
+          communityId,
           createdAt: now,
         })
         .returning();
@@ -80,6 +85,7 @@ export async function POST(req: Request) {
         company,
         role,
         status: "",
+        communityId,
         occuredAt: now,
       });
       return post;

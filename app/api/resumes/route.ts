@@ -7,6 +7,7 @@ import { requireUser, HttpError } from "@/lib/auth-server";
 import { logActivity, namesByIds } from "@/db/activity";
 import { ensureBucket, putResume, deleteResume } from "@/lib/s3";
 import { notifyChanges } from "@/lib/live";
+import { getUserCommunityId } from "@/lib/community";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,8 +29,9 @@ const resumeKey = (resumeId: string) => `resumes/${resumeId}.pdf`;
 // List — returns metadata only (no base64 to keep responses small)
 export async function GET(req: Request) {
   try {
-    await requireUser(req);
-    const rows = await db.select().from(resumes).orderBy(desc(resumes.createdAt));
+    const user = await requireUser(req);
+    const communityId = await getUserCommunityId(user.id, req);
+    const rows = await db.select().from(resumes).where(eq(resumes.communityId, communityId)).orderBy(desc(resumes.createdAt));
     const ids = [...new Set(rows.map((r) => r.userId).filter(Boolean))];
     const nameById = ids.length ? await namesByIds(db, ids) : {};
 
@@ -52,6 +54,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const user = await requireUser(req);
+    const communityId = await getUserCommunityId(user.id, req);
     const body = await req.json();
     const title = String(body.title || "").trim();
     const fileName = String(body.fileName || "resume.pdf").trim();
@@ -77,12 +80,14 @@ export async function POST(req: Request) {
         userId: user.id,
         fileName,
         resumeTitle: title,
+        communityId,
         createdAt: now,
       });
       await logActivity(tx, {
         userId: user.id,
         type: "RESUME_UPLOAD",
         resumeId,
+        communityId,
         occuredAt: now,
       });
     });

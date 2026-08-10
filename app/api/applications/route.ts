@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { applications, applicationUserStatus } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
 import { logActivity, namesByIds } from "@/db/activity";
+import { getUserCommunityId, getCommunityMemberIds } from "@/lib/community";
 import { statusToEnum, enumToStatus, priorityToEnum, enumToPriority, roleCategoryToEnum, enumToRoleCategory } from "@/lib/enums";
 import { STATUSES, NOT_YET_APPLIED_STATUS, reachedFlagsForStatus, type ReachedFlag } from "@/lib/types";
 import { isSafeHttpUrl } from "@/lib/safe-url";
@@ -53,8 +54,12 @@ function cleanInput(input: Record<string, unknown>) {
 // still counts toward the OA/Interview buckets in the community/insights tabs.
 export async function GET(req: Request) {
   try {
-    await requireUser(req);
-    const rows = await db.select().from(applications).orderBy(desc(applications.createdAt));
+    const user = await requireUser(req);
+    const communityId = await getUserCommunityId(user.id, req);
+    const memberIds = await getCommunityMemberIds(communityId);
+    const rows = memberIds.length
+      ? await db.select().from(applications).where(inArray(applications.applicantId, memberIds)).orderBy(desc(applications.createdAt))
+      : [];
 
     const ids = rows.map((r) => r.applicationId);
     const logs = ids.length
@@ -123,6 +128,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const user = await requireUser(req);
+    const communityId = await getUserCommunityId(user.id, req);
     const body = await req.json();
     const data = cleanInput(body);
     if (!data.company) throw new HttpError(400, "Company is required");
@@ -174,6 +180,7 @@ export async function POST(req: Request) {
           company: app.company,
           role: app.role,
           status: statusDisplay,
+          communityId,
           occuredAt: now,
         });
       }
@@ -191,6 +198,7 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   try {
     const user = await requireUser(req);
+    const communityId = await getUserCommunityId(user.id, req);
     const body = await req.json();
     const id = String(body.id || "").trim();
     if (!id) throw new HttpError(400, "Missing application id");
@@ -248,6 +256,7 @@ export async function PUT(req: Request) {
           company: (patch.company as string) || existing.company,
           role: (patch.role as string) || existing.role,
           status: newStatusDisplay,
+          communityId,
           occuredAt: now,
         });
       }

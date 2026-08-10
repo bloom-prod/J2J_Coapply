@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { and, ne } from "drizzle-orm";
+import { and, ne, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { applications, applicationUserStatus, users } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
+import { getUserCommunityId, getCommunityMemberIds } from "@/lib/community";
 import { enumToStatus, enumToRoleCategory } from "@/lib/enums";
 import { classifyRole } from "@/lib/job-utils";
 import { resolveUserColor } from "@/lib/user-colors";
@@ -39,15 +40,23 @@ function weekMonday(dateStrIn: string): string {
 
 export async function GET(req: Request) {
   try {
-    await requireUser(req); // any signed-in user may view community stats
+    const user = await requireUser(req); // any signed-in user may view community stats
+    const communityId = await getUserCommunityId(user.id, req);
+    const memberIds = await getCommunityMemberIds(communityId);
 
     const [apps, statusLogs, userRows] = await Promise.all([
-      db.select().from(applications),
-      db.select().from(applicationUserStatus),
-      db
-        .select({ id: users.id, name: users.name, userColor: users.userColor })
-        .from(users)
-        .where(and(ne(users.isAdmin, true), ne(users.email, "system@jobless.local"))),
+      memberIds.length
+        ? db.select().from(applications).where(inArray(applications.applicantId, memberIds))
+        : Promise.resolve([]),
+      memberIds.length
+        ? db.select().from(applicationUserStatus).where(inArray(applicationUserStatus.changedById, memberIds))
+        : Promise.resolve([]),
+      memberIds.length
+        ? db
+            .select({ id: users.id, name: users.name, userColor: users.userColor })
+            .from(users)
+            .where(and(ne(users.isAdmin, true), ne(users.email, "system@jobless.local"), inArray(users.id, memberIds)))
+        : Promise.resolve([]),
     ]);
 
     // Build uid -> name and name -> color maps from users (replaces userProfiles)

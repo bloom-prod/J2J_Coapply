@@ -7,6 +7,7 @@ import {
   signOut as clientSignOut,
   getToken,
   getCurrentUser,
+  authHeaders,
   type ClientUser,
 } from "@/lib/client-auth";
 import type { FeedEvent, Job, JobPost, Resume, UserProfile, InterviewPrepPost, InterviewPrepComment } from "@/lib/types";
@@ -152,12 +153,11 @@ export function useBloom() {
     let cancelled = false;
 
     async function refresh() {
-      const token = getToken();
-      if (!token) return;
+      if (!getToken()) return;
       try {
         const [appsRes, feedRes] = await Promise.all([
-          fetch("/api/applications", { headers: { Authorization: `Bearer ${token}` } }),
-          fetch("/api/feed?limit=10", { headers: { Authorization: `Bearer ${token}` } }),
+          fetch("/api/applications", { headers: authHeaders() }),
+          fetch("/api/feed?limit=10", { headers: authHeaders() }),
         ]);
         const [appsData, feedData] = await Promise.all([appsRes.json(), feedRes.json()]);
         if (cancelled) return;
@@ -205,9 +205,8 @@ export function useBloom() {
     // jobs/feed poll so the loader only clears after names are resolved.
     const loadNames = async () => {
       try {
-        const token = getToken();
-        if (!token) return;
-        const res = await fetch("/api/usernames", { headers: { Authorization: `Bearer ${token}` } });
+        if (!getToken()) return;
+        const res = await fetch("/api/usernames", { headers: authHeaders() });
         const d = await res.json();
         if (cancelled || !d.ok) return;
         const names = new Map<string, string>(Object.entries(d.uidToName as Record<string, string>));
@@ -289,11 +288,10 @@ export function useBloom() {
   // ---- writes (through the TS API, with optimistic overlay) ----
   const authedFetch = useCallback(
     async (method: string, body: Record<string, unknown>) => {
-      const token = getToken();
-      if (!token) return { ok: false, error: "Not signed in" };
+      if (!getToken()) return { ok: false, error: "Not signed in" };
       const res = await fetch("/api/applications", {
         method,
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(body),
       });
       let d: { ok?: boolean; error?: string; id?: string } = {};
@@ -387,11 +385,10 @@ export function useBloom() {
       const tempIds = tempJobs.map((j) => j.id);
       setPending((p) => ({ ...p, adds: [...tempJobs, ...p.adds] }));
       try {
-        const token = getToken();
-        if (!token) return;
+        if (!getToken()) return;
         const res = await fetch("/api/applications/bulk", {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          headers: authHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ jobs: rows }),
         });
         let d: { ok?: boolean; error?: string; created?: number } = {};
@@ -480,10 +477,9 @@ export function useBloom() {
   const [fetchedProfile, setFetchedProfile] = useState<UserProfile | null>(null);
 
   const fetchProfile = useCallback(async () => {
-    const token = getToken();
-    if (!token) return;
+    if (!getToken()) return;
     try {
-      const res = await fetch("/api/profile", { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch("/api/profile", { headers: authHeaders() });
       const d = await res.json();
       if (d.ok) setFetchedProfile(d.profile);
     } catch (e) {
@@ -498,12 +494,11 @@ export function useBloom() {
 
   const updateProfile = useCallback(
     async (data: Record<string, string>) => {
-      const token = getToken();
-      if (!token) return;
+      if (!getToken()) return;
       try {
         const res = await fetch("/api/profile", {
           method: "PUT",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          headers: authHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify(data),
         });
         const d = await res.json();
@@ -537,10 +532,9 @@ export function useBloom() {
   );
 
   const fetchJobPosts = useCallback(async () => {
-    const token = getToken();
-    if (!token) return;
+    if (!getToken()) return;
     try {
-      const res = await fetch("/api/jobboard", { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch("/api/jobboard", { headers: authHeaders() });
       const d = await res.json();
       if (d.ok) setJobPosts(d.posts as JobPost[]);
     } catch (e) {
@@ -554,11 +548,10 @@ export function useBloom() {
   }, [user, fetchJobPosts]);
 
   const shareJob = useCallback(async (data: { company: string; role: string; url: string; location: string; notes: string }) => {
-    const token = getToken();
-    if (!token) return;
+    if (!getToken()) return;
     const res = await fetch("/api/jobboard", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(data),
     });
     const d = await res.json();
@@ -568,10 +561,9 @@ export function useBloom() {
   }, [fetchJobPosts]);
 
   const fetchResumes = useCallback(async () => {
-    const token = getToken();
-    if (!token) return;
+    if (!getToken()) return;
     try {
-      const res = await fetch("/api/resumes", { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch("/api/resumes", { headers: authHeaders() });
       const d = await res.json();
       if (d.ok) setResumes(d.resumes as Resume[]);
     } catch (e) {
@@ -585,8 +577,7 @@ export function useBloom() {
   }, [user, fetchResumes]);
 
   const uploadResume = useCallback(async (title: string, file: File) => {
-    const token = getToken();
-    if (!token) return;
+    if (!getToken()) return;
     const fileBase64 = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve((reader.result as string).split(",")[1]);
@@ -595,7 +586,7 @@ export function useBloom() {
     });
     const res = await fetch("/api/resumes", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ title, fileName: file.name, fileBase64 }),
     });
     const d = await res.json();
@@ -604,11 +595,10 @@ export function useBloom() {
   }, [fetchResumes]);
 
   const deleteResume = useCallback(async (id: string) => {
-    const token = getToken();
-    if (!token) return;
+    if (!getToken()) return;
     const res = await fetch("/api/resumes", {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ id }),
     });
     const d = await res.json();
@@ -617,11 +607,10 @@ export function useBloom() {
   }, [fetchResumes]);
 
   const deleteJobPost = useCallback(async (id: string) => {
-    const token = getToken();
-    if (!token) return;
+    if (!getToken()) return;
     const res = await fetch("/api/jobboard", {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ id }),
     });
     const d = await res.json();
@@ -631,10 +620,9 @@ export function useBloom() {
   }, [fetchJobPosts]);
 
   const fetchInterviewPrepPosts = useCallback(async () => {
-    const token = getToken();
-    if (!token) return;
+    if (!getToken()) return;
     try {
-      const res = await fetch("/api/interview-prep", { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch("/api/interview-prep", { headers: authHeaders() });
       const d = await res.json();
       if (d.ok) setInterviewPrepPosts(d.posts as InterviewPrepPost[]);
     } catch (e) {
@@ -648,11 +636,10 @@ export function useBloom() {
   }, [user, fetchInterviewPrepPosts]);
 
   const createInterviewPrepPost = useCallback(async (data: { title: string; content: string; company: string }) => {
-    const token = getToken();
-    if (!token) return;
+    if (!getToken()) return;
     const res = await fetch("/api/interview-prep", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(data),
     });
     const d = await res.json();
@@ -661,11 +648,10 @@ export function useBloom() {
   }, [fetchInterviewPrepPosts]);
 
   const deleteInterviewPrepPost = useCallback(async (id: string) => {
-    const token = getToken();
-    if (!token) return;
+    if (!getToken()) return;
     const res = await fetch("/api/interview-prep", {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ id }),
     });
     const d = await res.json();
@@ -674,11 +660,10 @@ export function useBloom() {
   }, [fetchInterviewPrepPosts]);
 
   const fetchInterviewPrepComments = useCallback(async (postId: string) => {
-    const token = getToken();
-    if (!token) return;
+    if (!getToken()) return;
     try {
       const res = await fetch(`/api/interview-prep/comments?postId=${postId}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: authHeaders(),
       });
       const d = await res.json();
       if (d.ok) {
@@ -690,11 +675,10 @@ export function useBloom() {
   }, []);
 
   const addInterviewPrepComment = useCallback(async (postId: string, text: string) => {
-    const token = getToken();
-    if (!token) return;
+    if (!getToken()) return;
     const res = await fetch("/api/interview-prep/comments", {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ postId, text }),
     });
     const d = await res.json();

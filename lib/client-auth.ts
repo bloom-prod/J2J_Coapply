@@ -12,13 +12,16 @@ export interface ClientUser {
 
 const TOKEN_KEY = "bloom.jwt";
 const USER_KEY = "bloom.user";
+const COMMUNITY_KEY = "bloom.communityId";
 
 let token: string | null = null;
 let user: ClientUser | null = null;
+let activeCommunityId: string | null = null;
 const listeners = new Set<(u: ClientUser | null) => void>();
 
 if (typeof window !== "undefined") {
   token = localStorage.getItem(TOKEN_KEY);
+  activeCommunityId = localStorage.getItem(COMMUNITY_KEY);
   try {
     const raw = localStorage.getItem(USER_KEY);
     user = raw ? (JSON.parse(raw) as ClientUser) : null;
@@ -114,4 +117,24 @@ export function signOut() {
     localStorage.removeItem(USER_KEY);
   }
   emit();
+}
+
+export function getActiveCommunityId(): string | null {
+  return activeCommunityId;
+}
+
+export function setActiveCommunityId(id: string | null) {
+  activeCommunityId = id;
+  if (typeof window !== "undefined") {
+    if (id) localStorage.setItem(COMMUNITY_KEY, id);
+    else localStorage.removeItem(COMMUNITY_KEY);
+  }
+}
+
+export function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const h: Record<string, string> = {};
+  if (token) h["Authorization"] = `Bearer ${token}`;
+  if (activeCommunityId) h["X-Community-Id"] = activeCommunityId;
+  if (extra) Object.assign(h, extra);
+  return h;
 }
