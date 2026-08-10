@@ -14,6 +14,7 @@ import { ResumeTab } from "@/components/resume-tab";
 import { ApplicationDialog } from "@/components/application-dialog";
 import { ImportDialog } from "@/components/import-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { CommunitySelector } from "@/components/community-selector";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -116,6 +117,7 @@ export default function Page() {
         </div>
         <div className="topbar-right">
           <ThemeToggle />
+          <CommunitySelector />
           <Button variant="outline" size="sm" className="rounded-full" onClick={exportCSV}>
             <i className="ti ti-download" /><span className="hidden sm:inline">Export CSV</span>
           </Button>

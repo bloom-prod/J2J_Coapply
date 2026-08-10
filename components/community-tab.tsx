@@ -17,7 +17,6 @@ import {
   YAxis,
 } from "recharts";
 import { getToken, getCurrentUser } from "@/lib/client-auth";
-import { CommunityPanel } from "@/components/community-panel";
 import { STATUSES, reachedStage, type CommunityStats, type FeedEvent, type Job } from "@/lib/types";
 import { timeAgo } from "@/lib/job-utils";
 import { useDarkMode } from "@/hooks/use-dark-mode";
@@ -234,7 +233,6 @@ export function CommunityTab({ allJobs, feed, userColors }: { allJobs: Job[]; fe
 
   return (
     <div>
-      <CommunityPanel />
       <div className="sec-header" style={{ marginBottom: 6 }}>
         <span className="sec-title">Community garden</span>
       </div>
