@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { authHeaders, getActiveCommunityId, setActiveCommunityId } from "@/lib/client-auth";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
+const COMMUNITY_COLLAPSED_KEY = "bloom_community_collapsed";
+
 interface Community {
   id: string;
   name: string;
@@ -12,9 +14,25 @@ interface Community {
 }
 
 export function CommunityPanel() {
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(COMMUNITY_COLLAPSED_KEY) === "1";
+  });
   const [communities, setCommunities] = useState<Community[]>([]);
   const [activeCommunityId, setActive] = useState<string | null>(getActiveCommunityId);
   const [loading, setLoading] = useState(true);
+
+  const [copied, setCopied] = useState(false);
+
+  // Modals
+  const [createOpen, setCreateOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
+
+  function toggleCollapsed() {
+    const next = !collapsed;
+    setCollapsed(next);
+    localStorage.setItem(COMMUNITY_COLLAPSED_KEY, next ? "1" : "0");
+  }
 
   // Create form
   const [createName, setCreateName] = useState("");
@@ -101,131 +119,178 @@ export function CommunityPanel() {
     }
   }
 
-  return (
-    <div className="feed-card" style={{ marginBottom: 14 }}>
-      <div className="it" style={{ marginBottom: 10 }}>Your communities</div>
+  const activeCommunity = communities.find((c) => c.id === activeCommunityId) ?? communities[0] ?? null;
 
-      {/* Community switcher */}
-      {!loading && communities.length > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ fontSize: 12, color: "var(--text-muted, #9E9088)", display: "block", marginBottom: 4 }}>
-            Active community
-          </label>
-          <select
-            value={activeCommunityId ?? ""}
-            onChange={(e) => handleSelect(e.target.value)}
+  function handleCopy() {
+    if (!activeCommunity) return;
+    navigator.clipboard.writeText(activeCommunity.inviteCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const btnStyle: React.CSSProperties = {
+    padding: "5px 14px",
+    borderRadius: 6,
+    border: "none",
+    background: "var(--pink-400)",
+    color: "#fff",
+    fontSize: 13,
+    cursor: "pointer",
+    fontWeight: 600,
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "7px 10px",
+    borderRadius: 6,
+    border: "1px solid var(--sage-100)",
+    background: "var(--card-bg)",
+    color: "var(--text-dark)",
+    fontSize: 13,
+    marginBottom: 10,
+    outline: "none",
+  };
+
+  return (
+    <>
+      <div className="feed-card" style={{ marginBottom: 14 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <div
+            onClick={toggleCollapsed}
             style={{
-              width: "100%",
-              padding: "6px 10px",
-              borderRadius: 6,
-              border: "1px solid var(--border, #e0d8d0)",
-              background: "var(--card-bg, #fff)",
-              color: "var(--text, #1a1a1a)",
-              fontSize: 13,
+              display: "flex",
+              alignItems: "center",
+              flex: 1,
+              cursor: "pointer",
+              gap: 8,
+              minWidth: 0,
             }}
           >
-            {communities.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} {c.role === "owner" ? "(owner)" : ""}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {loading && (
-        <div style={{ fontSize: 12, color: "var(--text-muted, #9E9088)", marginBottom: 12 }}>
-          Loading communities...
-        </div>
-      )}
-
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        {/* Create community */}
-        <form onSubmit={handleCreate} style={{ flex: "1 1 200px" }}>
-          <div style={{ fontSize: 12, color: "var(--text-muted, #9E9088)", marginBottom: 4 }}>
-            Create a new community
+            <i
+              className={collapsed ? "ti ti-chevron-right" : "ti ti-chevron-down"}
+              style={{ fontSize: 16, color: "var(--text-mid)", flexShrink: 0 }}
+            />
+            <span className="it" style={{ margin: 0 }}>
+              Your communities
+            </span>
           </div>
-          <div style={{ display: "flex", gap: 6 }}>
+          {!collapsed && (
+            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+              <button style={{ ...btnStyle, background: "var(--sage-400)" }} onClick={() => { setJoinOpen(true); setJoinError(""); setJoinCode(""); }}>
+                Join
+              </button>
+              <button style={btnStyle} onClick={() => { setCreateOpen(true); setCreateError(""); setCreateName(""); }}>
+                + New
+              </button>
+            </div>
+          )}
+        </div>
+
+        {!collapsed && (
+          <div style={{ marginTop: 10 }}>
+            {loading && (
+              <div style={{ fontSize: 12, color: "var(--text-light)" }}>Loading...</div>
+            )}
+
+            {!loading && communities.length === 0 && (
+              <div style={{ fontSize: 13, color: "var(--text-light)" }}>
+                You're not in any community yet — create one or join with an invite code.
+              </div>
+            )}
+
+            {!loading && communities.length > 0 && (
+              <>
+                <select
+                  value={activeCommunityId ?? ""}
+                  onChange={(e) => handleSelect(e.target.value)}
+                  style={{ width: "100%", padding: "6px 10px", borderRadius: 6, border: "1px solid var(--sage-100)", background: "var(--card-bg)", color: "var(--text-dark)", fontSize: 13, marginBottom: 10 }}
+                >
+                  {communities.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}{c.role === "owner" ? " (owner)" : ""}
+                    </option>
+                  ))}
+                </select>
+                {activeCommunity && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--pink-50)", borderRadius: 6, padding: "6px 10px" }}>
+                    <span style={{ fontSize: 12, color: "var(--text-mid)" }}>Invite code:</span>
+                    <code style={{ fontSize: 13, fontWeight: 600, color: "var(--text-dark)", flex: 1 }}>{activeCommunity.inviteCode}</code>
+                    <button onClick={handleCopy} style={{ ...btnStyle, padding: "3px 10px", fontSize: 12, background: copied ? "var(--sage-400)" : "var(--pink-400)" }}>
+                      {copied ? "Copied!" : "Copy"}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Create community modal */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create a community</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreate}>
+            <div style={{ fontSize: 12, color: "var(--text-light)", marginBottom: 6 }}>Community name</div>
             <input
               type="text"
-              placeholder="Community name"
+              placeholder="e.g. Fall 2025 Grind"
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
-              style={{
-                flex: 1,
-                padding: "5px 8px",
-                borderRadius: 6,
-                border: "1px solid var(--border, #e0d8d0)",
-                background: "var(--card-bg, #fff)",
-                color: "var(--text, #1a1a1a)",
-                fontSize: 13,
-              }}
+              autoFocus
+              style={inputStyle}
             />
+            {createError && (
+              <div style={{ fontSize: 12, color: "var(--danger)", marginBottom: 8 }}>{createError}</div>
+            )}
             <button
               type="submit"
               disabled={createLoading || !createName.trim()}
-              style={{
-                padding: "5px 12px",
-                borderRadius: 6,
-                border: "none",
-                background: "var(--accent, #D4537E)",
-                color: "#fff",
-                fontSize: 13,
-                cursor: createLoading || !createName.trim() ? "not-allowed" : "pointer",
-                opacity: createLoading || !createName.trim() ? 0.6 : 1,
-              }}
+              style={{ ...btnStyle, width: "100%", padding: "8px", opacity: createLoading || !createName.trim() ? 0.6 : 1, cursor: createLoading || !createName.trim() ? "not-allowed" : "pointer" }}
             >
-              {createLoading ? "..." : "Create"}
+              {createLoading ? "Creating..." : "Create community"}
             </button>
-          </div>
-          {createError && (
-            <div style={{ fontSize: 11, color: "var(--danger, #A32D2D)", marginTop: 4 }}>{createError}</div>
-          )}
-        </form>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-        {/* Join community */}
-        <form onSubmit={handleJoin} style={{ flex: "1 1 200px" }}>
-          <div style={{ fontSize: 12, color: "var(--text-muted, #9E9088)", marginBottom: 4 }}>
-            Join with invite code
-          </div>
-          <div style={{ display: "flex", gap: 6 }}>
+      {/* Join community modal */}
+      <Dialog open={joinOpen} onOpenChange={setJoinOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Join a community</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleJoin}>
+            <div style={{ fontSize: 12, color: "var(--text-light)", marginBottom: 6 }}>Invite code</div>
             <input
               type="text"
-              placeholder="Invite code"
+              placeholder="Enter invite code"
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value)}
-              style={{
-                flex: 1,
-                padding: "5px 8px",
-                borderRadius: 6,
-                border: "1px solid var(--border, #e0d8d0)",
-                background: "var(--card-bg, #fff)",
-                color: "var(--text, #1a1a1a)",
-                fontSize: 13,
-              }}
+              autoFocus
+              style={inputStyle}
             />
+            {joinError && (
+              <div style={{ fontSize: 12, color: "var(--danger)", marginBottom: 8 }}>{joinError}</div>
+            )}
             <button
               type="submit"
               disabled={joinLoading || !joinCode.trim()}
-              style={{
-                padding: "5px 12px",
-                borderRadius: 6,
-                border: "none",
-                background: "var(--accent, #D4537E)",
-                color: "#fff",
-                fontSize: 13,
-                cursor: joinLoading || !joinCode.trim() ? "not-allowed" : "pointer",
-                opacity: joinLoading || !joinCode.trim() ? 0.6 : 1,
-              }}
+              style={{ ...btnStyle, width: "100%", padding: "8px", background: "var(--sage-400)", opacity: joinLoading || !joinCode.trim() ? 0.6 : 1, cursor: joinLoading || !joinCode.trim() ? "not-allowed" : "pointer" }}
             >
-              {joinLoading ? "..." : "Join"}
+              {joinLoading ? "Joining..." : "Join community"}
             </button>
-          </div>
-          {joinError && (
-            <div style={{ fontSize: 11, color: "var(--danger, #A32D2D)", marginTop: 4 }}>{joinError}</div>
-          )}
-        </form>
-      </div>
-    </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
