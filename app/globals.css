@@ -104,8 +104,9 @@
 .spinner{width:36px;height:36px;border:3px solid var(--pink-100);border-top-color:var(--pink-400);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px;}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-.stats-row{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px;}
-.stat-card{background:var(--card-bg);border-radius:14px;padding:14px 16px;border:1px solid var(--pink-100);text-align:center;}
+.stats-row{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;}
+.stat-card{flex:1;min-width:96px;background:var(--card-bg);border-radius:14px;padding:14px 16px;border:1px solid var(--pink-100);text-align:center;}
+.stats-row .stat-card:first-child{flex:0 0 auto;min-width:0;}
 .stat-card.sage{border-color:var(--sage-100);}
 .stat-num{font-size:26px;font-weight:700;color:var(--pink-600);line-height:1;}
 .stat-card.sage .stat-num{color:var(--sage-600);}
