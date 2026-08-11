@@ -3,7 +3,10 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { applications, applicationUserStatus } from "@/db/schema";
 import { requireUser, HttpError } from "@/lib/auth-server";
+import { logActivity } from "@/db/activity";
 import { enumToStatus, statusToEnum } from "@/lib/enums";
+import { getUserCommunityId } from "@/lib/community";
+import { NOT_YET_APPLIED_STATUS } from "@/lib/types";
 import { notifyChanges } from "@/lib/live";
 
 export const runtime = "nodejs";
@@ -39,6 +42,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       rows.push({ applicationId: params.id, changedById: user.id, status: se, changedAt });
     }
 
+    const communityId = await getUserCommunityId(user.id, req);
     const latest = await db.transaction(async (tx) => {
       await tx.insert(applicationUserStatus).values(rows);
 
@@ -56,6 +60,21 @@ export async function POST(req: Request, { params }: { params: { id: string } })
           .update(applications)
           .set({ status: top.status, updatedAt: new Date() })
           .where(eq(applications.applicationId, params.id));
+
+        // A backfill that changes the visible status is a real move — surface
+        // it in the activity feed (same type logic as /api/applications PUT).
+        const statusDisplay = enumToStatus(top.status);
+        if (statusDisplay && statusDisplay !== NOT_YET_APPLIED_STATUS) {
+          await logActivity(tx, {
+            userId: user.id,
+            type: top.status === "OFFER" ? "OFFER" : "STATUS",
+            company: app.company,
+            role: app.role,
+            status: statusDisplay,
+            communityId,
+            occuredAt: new Date(),
+          });
+        }
       }
       return top?.status ?? app.status;
     });
