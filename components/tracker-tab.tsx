@@ -40,11 +40,14 @@ export function TrackerTab({
     const t = jobs.length;
     return {
       total: t,
-      active: jobs.filter((j) => ["Applied", "OA", "Phone Screen", "Interview"].includes(j.status)).length,
+      // "Waiting" is still an open, in-flight application — it belongs in Active.
+      active: jobs.filter((j) => ["Applied", "OA", "Phone Screen", "Interview", "Waiting"].includes(j.status)).length,
       interview: jobs.filter((j) => j.status === "Interview").length,
       offer: jobs.filter((j) => j.status === "Offer").length,
       wantToApply: jobs.filter((j) => j.status === "Want to Apply").length,
-      rate: t ? Math.round((jobs.filter((j) => !["Want to Apply", "Applied", "Ghosted"].includes(j.status)).length / t) * 100) + "%" : "0%",
+      // ...but it is by definition "no reply yet", so it must not inflate the
+      // response rate, same as Applied and Ghosted.
+      rate: t ? Math.round((jobs.filter((j) => !["Want to Apply", "Applied", "Waiting", "Ghosted"].includes(j.status)).length / t) * 100) + "%" : "0%",
       star: jobs.filter((j) => isStarred(j)).length,
     };
   }, [jobs]);

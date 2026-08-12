@@ -11,6 +11,7 @@ import { JobsTab } from "@/components/jobs-tab";
 import { InterviewPrepTab } from "@/components/interview-prep-tab";
 import { ProfileTab } from "@/components/profile-tab";
 import { ResumeTab } from "@/components/resume-tab";
+import { NotesTab, NotesDrawer } from "@/components/notes-tab";
 import { ApplicationDialog } from "@/components/application-dialog";
 import { ImportDialog } from "@/components/import-dialog";
 import { FeedbackDialog } from "@/components/feedback-dialog";
@@ -104,6 +105,7 @@ export default function Page() {
     ["jobs", "💼 Jobs"],
     ["interview-prep", "🎤 Interview Prep"],
     ["resume", "📄 Resumes"],
+    ["notes", "🗒️ Notes"],
     ["community", "🌍 Community"],
   ] as const;
 
@@ -184,6 +186,14 @@ export default function Page() {
                   onDelete={bloom.deleteResume}
                 />
               </TabsContent>
+              <TabsContent value="notes">
+                <NotesTab
+                  value={bloom.notes}
+                  onChange={bloom.setNotes}
+                  saveState={bloom.notesSaveState}
+                  loaded={bloom.notesLoaded}
+                />
+              </TabsContent>
               <TabsContent value="community">
                 <CommunityTab allJobs={bloom.allJobs} feed={bloom.feed} userColors={bloom.userColors} />
               </TabsContent>
@@ -209,6 +219,17 @@ export default function Page() {
       />
 
       <ShamePopup />
+
+      {/* Pull-out notes panel — Applications tab only, per the tab's own
+          workflow. It renders the same scratchpad as the Notes tab. */}
+      {tab === "tracker" && (
+        <NotesDrawer
+          value={bloom.notes}
+          onChange={bloom.setNotes}
+          saveState={bloom.notesSaveState}
+          loaded={bloom.notesLoaded}
+        />
+      )}
 
       {/* Profile dialog */}
       <Dialog open={profileOpen} onOpenChange={setProfileOpen}>

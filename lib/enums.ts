@@ -11,6 +11,7 @@ export const STATUS_TO_ENUM: Record<string, StatusEnum> = {
   OA: "ONLINE_ASSESMENT",
   "Phone Screen": "PHONE_SCREEN",
   Interview: "INTERVIEW",
+  Waiting: "WAITING",
   Offer: "OFFER",
   Rejected: "REJECTED",
   Ghosted: "GHOSTED",

@@ -15,6 +15,12 @@ const ORDER: Record<string, number> = {
   "Want to Apply": 0,
   Applied: 1,
   OA: 2,
+  // Fractional depth: "Waiting" is a holding state, not a funnel stage. Sitting
+  // just past OA keeps the common flows forward-facing (Applied/OA → Waiting →
+  // Phone Screen / Interview / Offer / Rejected). Edges back from a later stage
+  // (e.g. Interview → Waiting) are dropped by the cycle-safe filter below, same
+  // as any other backward move.
+  Waiting: 2.5,
   "Phone Screen": 3,
   Interview: 4,
   Offer: 5,
@@ -29,6 +35,7 @@ const COLORS: Record<string, [string, string]> = {
   "Want to Apply": ["#D8B97A", "#8A6D3B"],
   Applied: ["#78AEDE", "#185FA5"],
   OA: ["#E0B46A", "#B98A2F"],
+  Waiting: ["#8FA4C0", "#4A6183"],
   "Phone Screen": ["#7BB87B", "#3F7D3F"],
   Interview: ["#E07BA0", "#B23A6B"],
   Offer: ["#7BC47B", "#3B6D11"],

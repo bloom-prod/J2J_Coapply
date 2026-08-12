@@ -357,7 +357,7 @@ test("'Want to Apply' entries must NOT be counted (was the bug)", () => {
 });
 
 test("All non-Want-to-Apply statuses ARE counted", () => {
-  const countedStatuses = ["Applied", "Phone Screen", "Interview", "Offer", "Rejected", "Ghosted", "Withdrawn"];
+  const countedStatuses = ["Applied", "OA", "Phone Screen", "Interview", "Waiting", "Offer", "Rejected", "Ghosted", "Withdrawn"];
   const fakeDocs = countedStatuses.map((status) => ({ ownerUid: "uid1", status }));
 
   const countsByUid = {};
