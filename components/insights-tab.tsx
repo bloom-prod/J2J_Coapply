@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { STATUSES, FUNNEL_STAGES, reachedStage, type Job } from "@/lib/types";
+import { STATUSES, FUNNEL_STAGES, NOT_YET_APPLIED_STATUS, reachedStage, type Job } from "@/lib/types";
 import { classifyRole } from "@/lib/job-utils";
 import { useDarkMode } from "@/hooks/use-dark-mode";
 import { TimelineTab } from "@/components/timeline-tab";
@@ -167,9 +167,29 @@ export function InsightsTab({ jobs, onEdit }: { jobs: Job[]; onEdit: (j: Job) =>
     (history || []).forEach((app) => {
       const h = app.history.map((x) => x.status).filter(Boolean);
       if (!h.length) return;
-      m[`Start>${h[0]}`] = (m[`Start>${h[0]}`] || 0) + 1;
-      for (let i = 0; i + 1 < h.length; i++) {
-        const k = `${h[i]}>${h[i + 1]}`;
+      // Every status except the "Want to Apply" wishlist state implies the user
+      // actually applied — you cannot reach OA, Interview, or Rejected without
+      // an application existing first. So only "Want to Apply" and "Applied"
+      // may follow Start (or the wishlist state); anything else gets the
+      // implied Applied step spliced in ahead of it.
+      //
+      // This is the common "logged it late" case: you apply without recording
+      // it, then add the row later already marked Rejected (or already at OA,
+      // Interview, …). No Applied row was ever written, so the raw history
+      // opens mid-funnel. Reconstructing it keeps the diagram readable —
+      // Start → Applied → Rejected rather than a floating Start → Rejected.
+      const chain: string[] = [];
+      for (const status of h) {
+        const prev = chain[chain.length - 1];
+        const atOrigin = prev === undefined || prev === NOT_YET_APPLIED_STATUS;
+        if (atOrigin && status !== NOT_YET_APPLIED_STATUS && status !== "Applied") {
+          chain.push("Applied");
+        }
+        chain.push(status);
+      }
+      m[`Start>${chain[0]}`] = (m[`Start>${chain[0]}`] || 0) + 1;
+      for (let i = 0; i + 1 < chain.length; i++) {
+        const k = `${chain[i]}>${chain[i + 1]}`;
         m[k] = (m[k] || 0) + 1;
       }
     });

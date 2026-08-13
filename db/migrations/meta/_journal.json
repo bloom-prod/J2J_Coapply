@@ -43,6 +43,13 @@
       "when": 1786319781389,
       "tag": "0005_community_scoped_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786497466932,
+      "tag": "0006_add_waiting_status_and_user_notes",
+      "breakpoints": true
     }
   ]
 }

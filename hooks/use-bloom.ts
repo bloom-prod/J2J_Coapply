@@ -10,7 +10,7 @@ import {
   authHeaders,
   type ClientUser,
 } from "@/lib/client-auth";
-import type { FeedEvent, Job, JobPost, Resume, UserProfile, InterviewPrepPost, InterviewPrepComment } from "@/lib/types";
+import type { FeedEvent, Job, JobPost, NotesSaveState, Resume, UserProfile, InterviewPrepPost, InterviewPrepComment } from "@/lib/types";
 import { resolveUserColor } from "@/lib/user-colors";
 import { jobKey } from "@/lib/import-utils";
 
@@ -531,6 +531,88 @@ export function useBloom() {
     [fetchProfile]
   );
 
+  // ── Personal notes scratchpad ───────────────────────────────────────────
+  // Both surfaces (the Notes tab and the Applications drawer) read and write
+  // this single piece of state, which is what keeps them in sync. The debounce
+  // timer lives here too — one shared timer means the two editors can never
+  // fire competing PUTs and clobber each other.
+  const [notes, setNotesState] = useState("");
+  const [notesLoaded, setNotesLoaded] = useState(false);
+  const [notesSaveState, setNotesSaveState] = useState<NotesSaveState>("idle");
+  const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Latest text, readable synchronously — the flush-on-unmount path can't wait
+  // for a state update to land.
+  const notesPending = useRef<string | null>(null);
+
+  const fetchNotes = useCallback(async () => {
+    if (!getToken()) return;
+    try {
+      const res = await fetch("/api/notes", { headers: authHeaders() });
+      const d = await res.json();
+      if (d.ok) setNotesState(d.notes.content || "");
+    } catch (e) {
+      console.error("fetchNotes error", e);
+    } finally {
+      setNotesLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      fetchNotes();
+    } else {
+      setNotesState("");
+      setNotesLoaded(false);
+      setNotesSaveState("idle");
+    }
+  }, [user, fetchNotes]);
+
+  const flushNotes = useCallback(async () => {
+    const content = notesPending.current;
+    if (content === null || !getToken()) return;
+    notesPending.current = null;
+    setNotesSaveState("saving");
+    try {
+      const res = await fetch("/api/notes", {
+        method: "PUT",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ content }),
+      });
+      const d = await res.json();
+      if (!res.ok || !d.ok) throw new Error(d.error || `Save failed (${res.status})`);
+      setNotesSaveState("saved");
+    } catch (e) {
+      setNotesSaveState("error");
+      toast.error("Notes not saved — " + (e as Error).message);
+    }
+  }, []);
+
+  // Optimistic local update + debounced persist. Typing stays instant; the
+  // network call only fires once the user pauses.
+  const setNotes = useCallback(
+    (content: string) => {
+      setNotesState(content);
+      notesPending.current = content;
+      setNotesSaveState("unsaved");
+      if (notesTimer.current) clearTimeout(notesTimer.current);
+      notesTimer.current = setTimeout(() => {
+        notesTimer.current = null;
+        flushNotes();
+      }, 800);
+    },
+    [flushNotes]
+  );
+
+  // Don't lose the last keystrokes if the tab is closed mid-debounce.
+  useEffect(() => {
+    return () => {
+      if (notesTimer.current) {
+        clearTimeout(notesTimer.current);
+        flushNotes();
+      }
+    };
+  }, [flushNotes]);
+
   const fetchJobPosts = useCallback(async () => {
     if (!getToken()) return;
     try {
@@ -767,6 +849,10 @@ export function useBloom() {
     signOut,
     profile: fetchedProfile,
     updateProfile,
+    notes,
+    notesLoaded,
+    notesSaveState,
+    setNotes,
   };
 }
 

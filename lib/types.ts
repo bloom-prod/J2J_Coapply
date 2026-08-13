@@ -4,6 +4,7 @@ export const STATUSES = [
   "OA",
   "Phone Screen",
   "Interview",
+  "Waiting",
   "Offer",
   "Rejected",
   "Ghosted",
@@ -14,9 +15,11 @@ export type Status = (typeof STATUSES)[number];
 // Funnel stages in forward progression order. An application "reaches" a stage
 // once its status ever hits that stage or a later one; reaching a stage implies
 // reaching every earlier stage (Applied → OA → Phone Screen → Interview → Offer).
-// Terminal outcomes (Rejected / Ghosted / Withdrawn) and "Want to Apply" sit
-// OUTSIDE the funnel — moving to them never sets a reached flag, it only
-// preserves the flags already collected. This is what makes tracking accurate:
+// Terminal outcomes (Rejected / Ghosted / Withdrawn), "Want to Apply", and the
+// "Waiting" holding state sit OUTSIDE the funnel — moving to them never sets a
+// reached flag, it only preserves the flags already collected. "Waiting" in
+// particular must not imply progress: an app parked there after an OA has
+// reached OA, not Interview. This is what makes tracking accurate:
 // an app that went Applied → OA → Interview → Rejected still counts toward the
 // Applied, OA, and Interview buckets, not just Rejected.
 export const FUNNEL_STAGES = ["Applied", "OA", "Phone Screen", "Interview", "Offer"] as const;
@@ -48,7 +51,8 @@ export type ReachedFlag = (typeof REACHED_FLAG_KEYS)[number];
  *  app can legitimately skip OA or Phone Screen (Applied → Interview directly).
  *  The one implication we keep is Offer ⇒ Interview (an offer essentially
  *  always follows an interview). Returns {} for non-funnel statuses so a move
- *  to Rejected / Ghosted / Withdrawn / Want to Apply never clears prior flags. */
+ *  to Rejected / Ghosted / Withdrawn / Waiting / Want to Apply never clears
+ *  prior flags. */
 export function reachedFlagsForStatus(status: string): Partial<Record<ReachedFlag, true>> {
   switch (status) {
     case "Applied": return { reachedApplied: true };
@@ -125,6 +129,15 @@ export interface Job {
   reachedInterview?: boolean;
   reachedOffer?: boolean;
 }
+
+// Save lifecycle for the notes scratchpad, surfaced as a small status line in
+// both the Notes tab and the Applications drawer.
+//   idle     — nothing typed yet this session
+//   unsaved  — edited, debounce timer still running
+//   saving   — PUT in flight
+//   saved    — persisted
+//   error    — last PUT failed (text is still in local state, not lost)
+export type NotesSaveState = "idle" | "unsaved" | "saving" | "saved" | "error";
 
 export interface UserProfile {
   uid: string;

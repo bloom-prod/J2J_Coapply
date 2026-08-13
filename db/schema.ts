@@ -18,6 +18,11 @@ export const applicationStatus = pgEnum("application_status", [
   "PHONE_SCREEN",
   "ONLINE_ASSESMENT",
   "INTERVIEW",
+  // Holding state: a step (OA, screen, interview) is done and the user is
+  // waiting to hear back. Deliberately NOT a funnel stage — it records no
+  // progress of its own, it only preserves whatever stage was already
+  // reached. See lib/types.ts FUNNEL_STAGES.
+  "WAITING",
   "OFFER",
   "REJECTED",
   "GHOSTED",
@@ -374,3 +379,14 @@ export const communityMembers = pgTable(
     index("cm_user").on(t.userId),
   ]
 );
+
+// Personal scratchpad — exactly one row per user, hence user_id as the PK.
+// Private and NOT community-scoped: these are the user's own temp notes, and
+// they are never surfaced in the feed, stats, or any community view.
+export const userNotes = pgTable("user_notes", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  content: text("content").notNull().default(""),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
