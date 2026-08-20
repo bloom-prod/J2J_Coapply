@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "node tests/shame-wall.test.mjs",
+    "test": "node tests/shame-wall.test.mjs && npx tsx tests/streak.test.ts",
     "test:db": "tsx tests/db-integration.test.ts",
     "db:migrate": "drizzle-kit migrate"
   },

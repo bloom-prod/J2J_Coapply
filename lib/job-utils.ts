@@ -63,3 +63,40 @@ export function timeAgo(date: Date | null): string {
 export function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
+
+/** Format a JS Date as its local YYYY-MM-DD wall-clock day. */
+function localDay(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Shift a YYYY-MM-DD string by whole days using local calendar arithmetic. */
+function shiftDay(dateStr: string, delta: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return localDay(new Date(y, m - 1, d + delta));
+}
+
+/**
+ * Current streak of consecutive days with at least one application, in the
+ * user's local timezone. The streak stays alive if today has no application
+ * yet (it only resets once a full day is skipped), then counts backwards
+ * through every contiguous active day. Backfilled `appliedDate`s from the
+ * application log count the same as fresh ones.
+ */
+export function currentStreak(appliedDates: string[], now: Date = new Date()): number {
+  const days = new Set<string>();
+  for (const d of appliedDates) {
+    const t = String(d || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(t)) days.add(t.slice(0, 10));
+  }
+  if (days.size === 0) return 0;
+
+  let cursor = localDay(now);
+  if (!days.has(cursor)) cursor = shiftDay(cursor, -1);
+
+  let streak = 0;
+  while (days.has(cursor)) {
+    streak += 1;
+    cursor = shiftDay(cursor, -1);
+  }
+  return streak;
+}

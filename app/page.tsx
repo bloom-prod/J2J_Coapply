@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ShamePopup } from "@/components/shame-wall";
+import { currentStreak } from "@/lib/job-utils";
 import type { Job } from "@/lib/types";
 
 const CSV_HEADERS = [
@@ -109,13 +110,28 @@ export default function Page() {
     ["community", "🌍 Community"],
   ] as const;
 
+  // Consecutive days with at least one real application (backfill-friendly:
+  // any historical applied date in the application log counts). Bookmarks in
+  // "Want to Apply" are wishlist entries, not applications, so they never
+  // contribute to the streak.
+  const streak = currentStreak(
+    bloom.myJobs.filter((j) => j.status !== "Want to Apply").map((j) => j.date)
+  );
+
   return (
     <div>
       <div className="topbar">
         <div className="logo">
           <div className="logo-icon">🌿</div>
           <div>
-            <div className="logo-text">bloom tracker</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div className="logo-text">bloom tracker</div>
+              {streak > 0 && (
+                <span className="streak-pill" title={`${streak}-day applying streak`}>
+                  🔥 {streak}
+                </span>
+              )}
+            </div>
             <div className="logo-sub">{bloom.myJobs.length} applications</div>
           </div>
         </div>
