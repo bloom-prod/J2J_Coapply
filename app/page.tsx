@@ -124,18 +124,16 @@ export default function Page() {
         <div className="logo">
           <div className="logo-icon">🌿</div>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div className="logo-text">bloom tracker</div>
-              {streak > 0 && (
-                <span className="streak-pill" title={`${streak}-day applying streak`}>
-                  🔥 {streak}
-                </span>
-              )}
-            </div>
+            <div className="logo-text">bloom tracker</div>
             <div className="logo-sub">{bloom.myJobs.length} applications</div>
           </div>
         </div>
         <div className="topbar-right">
+          {streak > 0 && (
+            <span className="streak-pill" title={`${streak}-day applying streak`}>
+              🔥 {streak}
+            </span>
+          )}
           <ThemeToggle />
           <CommunitySelector />
           <Button variant="outline" size="sm" className="rounded-full" onClick={exportCSV}>
