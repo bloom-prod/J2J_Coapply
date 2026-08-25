@@ -102,56 +102,20 @@ function buildFallback(users: UserApps[]): Record<string, string> {
   return fallback;
 }
 
-const SYSTEM_PROMPT = `You are the most ruthless, no-mercy roast master in a job-hunting accountability group. Your job is to emotionally destroy anyone slacking off. You hold nothing back.
-
-Rules:
-- 0 apps: absolutely DEMOLISH them. Be cruel, creative, and personal. Compare them to the laziest, most pathetic things imaginable. Question their life choices, their ambition, their worth ethic. Make it sting.
-- 1-3 apps: mock them mercilessly. That's embarrassing and they should feel bad. Barely trying is worse than not trying. Tear into them.
-- 4-9 apps: backhanded compliments. Sure they did something, but don't let them get comfortable. Keep the pressure brutal.
-- 10+ apps: genuine props but make everyone else feel terrible by comparison. Use them as a weapon against the slackers.
-- Each roast MUST be exactly 1-2 sentences, minimum 10 words.
-- Be mean. Be personal. Be creative. Make them feel genuine shame.
-- No hashtags. No emojis. Use the exact names as given.
-- Respond ONLY with valid JSON, no markdown fences.`;
-
 /**
- * Generates roasts for ALL users in a single API call.
+ * Generates a roast for each user with one API call per user.
+ * (A single batched call blows the reasoning model's output budget, so we
+ * keep the per-user max_tokens and call per member instead.)
  */
 export async function generateRoasts(users: UserApps[]): Promise<Record<string, string>> {
   const fallback = buildFallback(users);
   if (getProviders().length === 0) return fallback;
 
-  const userLines = users.map((u) =>
-    `- "${u.name}": ${u.appsToday} application${u.appsToday !== 1 ? "s" : ""} today`
-  ).join("\n");
-
-  const userPrompt = `Here is today's application count for each member:
-
-${userLines}
-
-Respond in this exact JSON format:
-{
-  "Name1": "roast text here",
-  "Name2": "roast text here"
-}`;
-
-  const raw = await callWithFallback(SYSTEM_PROMPT, userPrompt, 768);
-  if (!raw) return fallback;
-
-  // Strip markdown code fences if present
-  const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-
-  try {
-    const parsed = JSON.parse(cleaned) as Record<string, string>;
-    const result: Record<string, string> = {};
-    users.forEach((u) => {
-      result[u.name] = parsed[u.name] || fallback[u.name];
-    });
-    return result;
-  } catch {
-    console.error("[LLM] Failed to parse JSON response:", cleaned);
-    return fallback;
+  const result: Record<string, string> = {};
+  for (const u of users) {
+    result[u.name] = await generateSingleRoast(u.name, u.appsToday);
   }
+  return result;
 }
 
 /**
@@ -165,9 +129,9 @@ export async function generateSingleRoast(name: string, appsToday: number): Prom
   if (getProviders().length === 0) return fallback;
 
   const result = await callWithFallback(
-    "You are the most ruthless roast master in a job-hunting group. Generate a single devastating roast (1-2 sentences, minimum 10 words). Be mean, creative, and make them feel genuine shame. No hashtags. No emojis. No markdown.",
+    "You are the most vicious, no-mercy roast master in a job-hunting accountability group. Your sole purpose is to emotionally demolish lazy job seekers and make them feel genuine, burning shame. Be cruel, creative, and personal — go for the jugular. Compare them to the laziest, most pathetic things imaginable. Question their ambition, their discipline, their entire life trajectory. If they applied to zero jobs, annihilate them without mercy. If they barely tried, mock them relentlessly for being a quitter. Never be kind, never be polite, never hold back. Generate a single devastating roast (1-2 sentences, minimum 10 words). No hashtags. No emojis. No markdown. Use the exact name as given.",
     `"${name}" just hit ${appsToday} apps today! Hype them up while roasting the rest of the group for being lazy.`,
-    150,
+    768,
   );
 
   return result || fallback;

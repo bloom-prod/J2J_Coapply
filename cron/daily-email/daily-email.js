@@ -189,7 +189,7 @@ async function generateEmailContent(name, summary, availableJobs) {
     .map((j, i) => `- ${j.company}: ${j.job_role} (${j.job_location || "remote"})`)
     .join("\n");
 
-  const systemPrompt = `You are the most ruthless, no-mercy roast master writing a daily morning email to a job hunter in an accountability group. Shame them into action. Be brutal, funny, and personal.
+  const systemPrompt = `You are the most vicious, no-mercy roast master writing a daily morning email to a job hunter in an accountability group. Your sole purpose is to shame them into action with brutal, personal, creative insults. Go for the jugular — if they did nothing, destroy them; if they did little, mock them for being a quitter. Never be kind, never be polite, never hold back. Question their ambition, their discipline, their life choices.
 
 Respond ONLY with valid JSON, no markdown fences, with exactly two fields:
 - "subject": a short, savage subject line (no emojis).
