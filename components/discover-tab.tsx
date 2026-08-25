@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import type { Job } from "@/lib/types";
+import { fmtDate } from "@/lib/job-utils";
 import { useDarkMode } from "@/hooks/use-dark-mode";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,25 +13,40 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-interface DiscoverCompany {
-  company: string;
-  roles: string[];
-  urls: string[];
+/**
+ * One role at a company, with the posting link and application date that
+ * belong to *that* role. Several people can apply to the same role, so the
+ * applicants and statuses are aggregated per role rather than per company.
+ */
+interface DiscoverRole {
+  role: string;
+  /** First non-empty posting URL seen for this role ("" if nobody recorded one). */
+  url: string;
+  /** Earliest date anyone applied to this role, as YYYY-MM-DD ("" if unknown). */
+  firstApplied: string;
+  /** Most recent date anyone applied to this role, as YYYY-MM-DD ("" if unknown). */
+  latestApplied: string;
   appliedBy: string[];
   statuses: string[];
+}
+
+interface DiscoverCompany {
+  company: string;
+  roles: DiscoverRole[];
+  appliedBy: string[];
   count: number;
   /** Most recent application date across this company's jobs (ISO-ish string, "" if unknown). */
   latestDate: string;
 }
 
-/** Collapse all whitespace (including non-breaking spaces) to a single regular space, lowercase, trim. */
-function cleanCompany(name: string): string {
+/** Collapse all whitespace (including non-breaking spaces) to a single regular space, lowercase, trim. Used to key both company and role names. */
+function cleanName(name: string): string {
   return name.replace(/[\s\u00A0\u200B]+/g, " ").toLowerCase().trim();
 }
 
 /** Normalize a company name for fuzzy matching: strip suffixes like "inc", "capital", "labs", etc. */
 function normalizeCompany(name: string): string {
-  return cleanCompany(name)
+  return cleanName(name)
     .replace(/[.,\-]+$/g, "")
     .replace(/\s+(inc|llc|ltd|co|corp|corporation|group|capital|labs|technologies|tech|solutions|software|services|holdings|consulting)\.?$/gi, "")
     .trim();
@@ -38,8 +54,8 @@ function normalizeCompany(name: string): string {
 
 /** Check if two company names are "close enough" to be the same company */
 function isSameCompany(a: string, b: string): boolean {
-  const ca = cleanCompany(a);
-  const cb = cleanCompany(b);
+  const ca = cleanName(a);
+  const cb = cleanName(b);
   if (ca === cb) return true;
   // one contains the other (e.g. "burford" vs "burford capital")
   if (ca.length >= 3 && cb.length >= 3) {
@@ -54,6 +70,22 @@ function isSameCompany(a: string, b: string): boolean {
   return false;
 }
 
+/** The day a job was applied on, as YYYY-MM-DD, falling back to when it was added. */
+function appliedDay(j: Job): string {
+  return String(j.date || j.added || "").slice(0, 10);
+}
+
+/** Who applied to a role and how far they got, for the role row's hover text. */
+function roleTooltip(r: DiscoverRole): string {
+  const parts = [r.role];
+  if (r.appliedBy.length) parts.push("applied by " + r.appliedBy.join(", "));
+  if (r.statuses.length) parts.push(r.statuses.join(", "));
+  return parts.join(" — ");
+}
+
+/** How many roles a company card shows before collapsing the rest behind a toggle. */
+const ROLE_PREVIEW = 4;
+
 export function DiscoverTab({
   allJobs,
   myJobs,
@@ -67,6 +99,17 @@ export function DiscoverTab({
   const dark = useDarkMode();
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"recent" | "popular" | "alpha">("recent");
+  // Company keys whose full role list is showing (session-only, unlike dismissals).
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggleExpanded = useCallback((company: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(company)) next.delete(company);
+      else next.add(company);
+      return next;
+    });
+  }, []);
 
   const DISMISSED_KEY = "discover-dismissed";
   const [dismissed, setDismissed] = useState<Set<string>>(() => {
@@ -79,7 +122,7 @@ export function DiscoverTab({
   });
 
   const dismissCompany = useCallback((company: string) => {
-    const key = cleanCompany(company);
+    const key = cleanName(company);
     setDismissed((prev) => {
       const next = new Set(prev);
       next.add(key);
@@ -89,19 +132,18 @@ export function DiscoverTab({
   }, []);
 
   const myCompanyNames = useMemo(
-    () => myJobs.map((j) => cleanCompany(j.company)).filter(Boolean),
+    () => myJobs.map((j) => cleanName(j.company)).filter(Boolean),
     [myJobs]
   );
 
   const discoveries = useMemo(() => {
     const map = new Map<string, DiscoverCompany>();
 
-    // Group jobs by company first, then deduplicate:
-    // if any job for a company has a URL, discard the ones without a URL.
+    // Group jobs by company first; the per-role breakdown happens below.
     const companyJobs = new Map<string, Job[]>();
     for (const j of allJobs) {
       if (!j.company) continue;
-      const key = cleanCompany(j.company);
+      const key = cleanName(j.company);
       if (myCompanyNames.some((my) => isSameCompany(my, key))) continue;
       if (dismissed.has(key)) continue;
       if (!companyJobs.has(key)) companyJobs.set(key, []);
@@ -109,29 +151,57 @@ export function DiscoverTab({
     }
 
     for (const [key, jobs] of companyJobs) {
-      const hasAnyUrl = jobs.some((j) => !!j.url);
-      const filtered = hasAnyUrl ? jobs.filter((j) => !!j.url) : jobs;
-
+      // A company-wide URL filter would drop a whole role just because the one
+      // person who applied to it never saved a link, so keep every job here and
+      // resolve the link per role below.
       const entry: DiscoverCompany = {
-        company: filtered[0].company,
+        company: jobs[0].company,
         roles: [],
-        urls: [],
         appliedBy: [],
-        statuses: [],
-        count: filtered.length,
+        count: jobs.length,
         latestDate: "",
       };
 
-      for (const j of filtered) {
-        const applied = j.date || j.added || "";
+      // Roles are free text, so two people typing the same title with different
+      // casing/spacing are the same role — merge on a normalized key but show
+      // the first spelling seen.
+      const byRole = new Map<string, DiscoverRole>();
+
+      for (const j of jobs) {
+        const applied = appliedDay(j);
         if (applied > entry.latestDate) entry.latestDate = applied;
-        if (j.role && !entry.roles.includes(j.role)) entry.roles.push(j.role);
-        if (j.url && !entry.urls.includes(j.url)) entry.urls.push(j.url);
         if (j.ownerName && !entry.appliedBy.includes(j.ownerName))
           entry.appliedBy.push(j.ownerName);
-        if (j.status && !entry.statuses.includes(j.status))
-          entry.statuses.push(j.status);
+
+        if (!j.role) continue;
+        const roleKey = cleanName(j.role);
+        let r = byRole.get(roleKey);
+        if (!r) {
+          r = {
+            role: j.role,
+            url: "",
+            firstApplied: "",
+            latestApplied: "",
+            appliedBy: [],
+            statuses: [],
+          };
+          byRole.set(roleKey, r);
+        }
+        if (!r.url && j.url) r.url = j.url;
+        if (applied) {
+          if (!r.firstApplied || applied < r.firstApplied) r.firstApplied = applied;
+          if (applied > r.latestApplied) r.latestApplied = applied;
+        }
+        if (j.ownerName && !r.appliedBy.includes(j.ownerName)) r.appliedBy.push(j.ownerName);
+        if (j.status && !r.statuses.includes(j.status)) r.statuses.push(j.status);
       }
+
+      // Most recently applied role first; undated roles sink to the bottom.
+      entry.roles = [...byRole.values()].sort(
+        (a, b) =>
+          b.latestApplied.localeCompare(a.latestApplied) ||
+          a.role.localeCompare(b.role)
+      );
 
       map.set(key, entry);
     }
@@ -143,7 +213,7 @@ export function DiscoverTab({
       list = list.filter(
         (c) =>
           c.company.toLowerCase().includes(q) ||
-          c.roles.some((r) => r.toLowerCase().includes(q))
+          c.roles.some((r) => r.role.toLowerCase().includes(q))
       );
     }
 
@@ -163,9 +233,6 @@ export function DiscoverTab({
 
     return list;
   }, [allJobs, myCompanyNames, dismissed, search, sortBy]);
-
-  const hasOfferOrInterview = (statuses: string[]) =>
-    statuses.includes("Offer") || statuses.includes("Interview");
 
   return (
     <div>
@@ -258,86 +325,141 @@ export function DiscoverTab({
                     by {d.appliedBy.join(", ")}
                   </div>
                 </div>
-                {hasOfferOrInterview(d.statuses) && (
-                  <span
-                    style={{
-                      fontSize: 10,
-                      padding: "2px 8px",
-                      borderRadius: 99,
-                      background: d.statuses.includes("Offer")
-                        ? "var(--success)"
-                        : "var(--info)",
-                      color: "#fff",
-                      fontWeight: 600,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {d.statuses.includes("Offer") ? "Has offers" : "Interviewing"}
-                  </span>
-                )}
               </div>
 
               {d.roles.length > 0 && (
                 <div
                   style={{
                     display: "flex",
-                    flexWrap: "wrap",
-                    gap: 4,
+                    flexDirection: "column",
+                    gap: 2,
                     marginBottom: 10,
                   }}
                 >
-                  {d.roles.slice(0, 5).map((r) => (
-                    <span
-                      key={r}
+                  {(expanded.has(d.company)
+                    ? d.roles
+                    : d.roles.slice(0, ROLE_PREVIEW)
+                  ).map((r) => (
+                    <div
+                      key={r.role}
                       style={{
-                        fontSize: 11,
-                        padding: "2px 8px",
-                        borderRadius: 99,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "5px 8px",
+                        borderRadius: 8,
                         background: dark
-                          ? "rgba(120,174,222,.15)"
-                          : "rgba(24,95,165,.08)",
-                        color: dark ? "#78AEDE" : "#185FA5",
+                          ? "rgba(120,174,222,.10)"
+                          : "rgba(24,95,165,.05)",
                       }}
                     >
-                      {r}
-                    </span>
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 500,
+                          color: dark ? "#78AEDE" : "#185FA5",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          flex: 1,
+                          minWidth: 0,
+                        }}
+                        title={roleTooltip(r)}
+                      >
+                        {r.role}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          color: "var(--text-light)",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={
+                          r.firstApplied && r.firstApplied !== r.latestApplied
+                            ? "Applied between " +
+                              fmtDate(r.firstApplied) +
+                              " and " +
+                              fmtDate(r.latestApplied)
+                            : undefined
+                        }
+                      >
+                        {r.latestApplied ? fmtDate(r.latestApplied) : "\u2014"}
+                      </span>
+                      {r.url ? (
+                        <a
+                          href={r.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            fontSize: 12,
+                            color: "var(--sage-400)",
+                            display: "flex",
+                            alignItems: "center",
+                          }}
+                          title="Open the posting for this role"
+                        >
+                          <i className="ti ti-external-link" />
+                        </a>
+                      ) : (
+                        <span
+                          style={{
+                            fontSize: 12,
+                            color: "var(--text-light)",
+                            opacity: 0.4,
+                            display: "flex",
+                            alignItems: "center",
+                          }}
+                          title="Nobody saved a link for this role"
+                        >
+                          <i className="ti ti-link-off" />
+                        </span>
+                      )}
+                      <button
+                        className="abtn"
+                        style={{
+                          fontSize: 12,
+                          color: "var(--sage-400)",
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                        onClick={() =>
+                          onSaveToTracker({
+                            company: d.company,
+                            role: r.role,
+                            url: r.url,
+                            status: "Want to Apply",
+                          })
+                        }
+                        title="Add this role to your tracker"
+                      >
+                        <i className="ti ti-plus" />
+                      </button>
+                    </div>
                   ))}
-                  {d.roles.length > 5 && (
-                    <span
+                  {d.roles.length > ROLE_PREVIEW && (
+                    <button
+                      className="abtn"
                       style={{
                         fontSize: 11,
                         color: "var(--text-light)",
                         padding: "2px 4px",
+                        alignSelf: "flex-start",
                       }}
+                      onClick={() => toggleExpanded(d.company)}
                     >
-                      +{d.roles.length - 5} more
-                    </span>
+                      {expanded.has(d.company)
+                        ? "Show fewer roles"
+                        : "+" +
+                          (d.roles.length - ROLE_PREVIEW) +
+                          (d.roles.length - ROLE_PREVIEW === 1
+                            ? " more role"
+                            : " more roles")}
+                    </button>
                   )}
                 </div>
               )}
 
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <button
-                  className="abtn"
-                  style={{
-                    fontSize: 12,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    color: "var(--sage-400)",
-                  }}
-                  onClick={() =>
-                    onSaveToTracker({
-                      company: d.company,
-                      role: d.roles[0] || "",
-                      url: d.urls[0] || "",
-                      status: "Want to Apply",
-                    })
-                  }
-                  title="Add to your tracker"
-                >
-                  <i className="ti ti-plus" /> Add to tracker
-                </button>
                 <button
                   className="abtn"
                   style={{
