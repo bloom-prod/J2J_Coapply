@@ -8,6 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: [self-hosted, Linux, X64]
+    environment: production
     concurrency:
       group: deploy-jobless
       cancel-in-progress: false
@@ -15,3 +16,6 @@ jobs:
       - name: Run deploy-jobless script on runner host
         run: /home/pxndey/scripts/deploy-jobless.sh
         timeout-minutes: 30
+      - name: Set deployment URL
+        if: always()
+        run: echo "environment_url=https://j2j.pxndey.com" >> "$GITHUB_ENV"
