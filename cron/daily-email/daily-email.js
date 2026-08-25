@@ -176,7 +176,7 @@ async function callLLM(systemPrompt, userPrompt) {
   return postChat({
     endpoint: "https://openrouter.ai/api/v1/chat/completions",
     token: OPENROUTER_API_KEY,
-    model: "deepseek/deepseek-v4-flash-0731",
+    model: "deepseek/deepseek-v4-flash-0731:floor",
     systemPrompt,
     userPrompt,
   });

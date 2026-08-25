@@ -19,7 +19,7 @@ function getProviders(): LLMProvider[] {
     providers.push({
       name: "OpenRouter",
       endpoint: "https://openrouter.ai/api/v1/chat/completions",
-      model: "deepseek/deepseek-v4-flash-0731",
+      model: "deepseek/deepseek-v4-flash-0731:floor",
       token: openRouterToken,
     });
   }
