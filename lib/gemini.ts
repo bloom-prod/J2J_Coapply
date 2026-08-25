@@ -31,7 +31,6 @@ async function callLLM(
   provider: LLMProvider,
   systemPrompt: string,
   userPrompt: string,
-  maxTokens: number,
 ): Promise<string | null> {
   try {
     const res = await fetch(provider.endpoint, {
@@ -47,7 +46,6 @@ async function callLLM(
           { role: "user", content: userPrompt },
         ],
         temperature: 1.0,
-        max_tokens: maxTokens,
         reasoning: { enabled: true },
       }),
     });
@@ -64,7 +62,16 @@ async function callLLM(
     }
 
     const data = await res.json();
-    return data?.choices?.[0]?.message?.content?.trim() || null;
+    const content = data?.choices?.[0]?.message?.content?.trim() || null;
+    if (!content) {
+      const finish = data?.choices?.[0]?.finish_reason;
+      const usage = data?.usage;
+      const reasoning = data?.choices?.[0]?.message?.reasoning;
+      console.warn(
+        `[${provider.name}] empty content (finish=${finish}, usage=${JSON.stringify(usage)}) reasoning=${reasoning ? reasoning.slice(0, 300) : "none"}`,
+      );
+    }
+    return content;
   } catch (err) {
     console.error(`[${provider.name}] Error:`, err);
     return null;
@@ -75,13 +82,12 @@ async function callLLM(
 async function callWithFallback(
   systemPrompt: string,
   userPrompt: string,
-  maxTokens: number,
 ): Promise<string | null> {
   const providers = getProviders();
   console.log("[LLM] callWithFallback — providers available:", providers.map((p) => p.name).join(", ") || "NONE");
   for (const provider of providers) {
     console.log(`[LLM] Trying ${provider.name}...`);
-    const result = await callLLM(provider, systemPrompt, userPrompt, maxTokens);
+    const result = await callLLM(provider, systemPrompt, userPrompt);
     if (result) {
       console.log(`[LLM] ${provider.name} succeeded (${result.length} chars)`);
       return result;
@@ -105,7 +111,7 @@ function buildFallback(users: UserApps[]): Record<string, string> {
 /**
  * Generates a roast for each user with one API call per user.
  * (A single batched call blows the reasoning model's output budget, so we
- * keep the per-user max_tokens and call per member instead.)
+ * call per member instead.)
  */
 export async function generateRoasts(users: UserApps[]): Promise<Record<string, string>> {
   const fallback = buildFallback(users);
@@ -131,8 +137,13 @@ export async function generateSingleRoast(name: string, appsToday: number): Prom
   const result = await callWithFallback(
     "You are the most vicious, no-mercy roast master in a job-hunting accountability group. Your sole purpose is to emotionally demolish lazy job seekers and make them feel genuine, burning shame. Be cruel, creative, and personal — go for the jugular. Compare them to the laziest, most pathetic things imaginable. Question their ambition, their discipline, their entire life trajectory. If they applied to zero jobs, annihilate them without mercy. If they barely tried, mock them relentlessly for being a quitter. Never be kind, never be polite, never hold back. Generate a single devastating roast (1-2 sentences, minimum 10 words). No hashtags. No emojis. No markdown. Use the exact name as given.",
     `"${name}" just hit ${appsToday} apps today! Hype them up while roasting the rest of the group for being lazy.`,
-    768,
   );
+
+  if (result) {
+    console.log(`[LLM] roast for "${name}" (${appsToday} apps): ${result.slice(0, 200)}`);
+  } else {
+    console.warn(`[LLM] roast for "${name}" (${appsToday} apps) FAILED — using fallback: ${fallback}`);
+  }
 
   return result || fallback;
 }

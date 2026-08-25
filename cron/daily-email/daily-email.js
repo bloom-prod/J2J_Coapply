@@ -159,7 +159,6 @@ async function postChat({ endpoint, token, model, systemPrompt, userPrompt }) {
           { role: "user", content: userPrompt },
         ],
         temperature: 0.9,
-        max_tokens: 400,
         reasoning: { enabled: true },
       }),
     });
