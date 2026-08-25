@@ -77,6 +77,43 @@ Table users {
   is_admin bool [not null, default: false]
   approved bool [not null, default: false]
   updated_at timestamptz [default: `now()`]
+
+  Indexes {
+    users_email [unique]
+  }
+}
+
+Table communities {
+  community_id uuid [pk, default: `gen_random_uuid()`]
+  name varchar [not null]
+  invite_code varchar [not null, unique]
+  created_by uuid [not null]
+  created_at timestamptz [default: `now()`]
+  updated_at timestamptz [default: `now()`]
+
+  Indexes {
+    communities_created_by
+    communities_invite_code
+  }
+}
+
+Table community_members {
+  community_id uuid [not null]
+  user_id uuid [not null]
+  role varchar [not null, default: 'member']
+  joined_at timestamptz [default: `now()`]
+
+  Indexes {
+    (community_id, user_id) [pk]
+    cm_community
+    cm_user
+  }
+}
+
+Table user_notes {
+  user_id uuid [pk]
+  content varchar [not null, default: '']
+  updated_at timestamptz [not null, default: `now()`]
 }
 
 Table lc_problems {
@@ -113,11 +150,12 @@ Table resumes {
   user_id uuid [not null]
   file_name varchar
   resume_title varchar
+  community_id uuid
 
   Indexes {
-    user_id
-    (user_id, created_at)
-    file_name
+    resumes_user_id
+    resumes_user_created
+    resumes_file_name
   }
 }
 
@@ -181,13 +219,14 @@ Table activity_log {
   status varchar
   resume_id uuid
   problem_id varchar
+  community_id uuid
 
   Indexes {
-    occured_at
-    user_id
-    (user_id, occured_at)
-    resume_id
-    problem_id
+    activity_log_occured
+    activity_log_user
+    activity_log_user_occured
+    activity_log_resume
+    activity_log_problem
   }
 }
 
@@ -215,13 +254,14 @@ Table interview_prep {
   creator_id uuid [not null]
   post_title varchar
   updated_at timestamptz [default: `now()`]
+  community_id uuid
 
   Indexes {
-    creator_id
-    (creator_id, created_at)
-    company
-    created_at
-    updated_at
+    ip_creator
+    ip_creator_created
+    ip_company
+    ip_created
+    ip_updated
   }
 }
 
@@ -248,14 +288,15 @@ Table jobboard {
   job_url varchar [not null]
   job_location varchar
   job_notes varchar
+  community_id uuid
 
   Indexes {
-    posted_by
-    (posted_by, created_at)
-    company
-    job_role
-    job_location
-    created_at
+    jb_posted_by
+    jb_posted_created
+    jb_company
+    jb_role
+    jb_location
+    jb_created
   }
 }
 
@@ -265,10 +306,11 @@ Table daily_roasts {
   roast_text varchar
   apps_count int
   generated_at timestamptz [default: `now()`]
+  community_id uuid
 
   Indexes {
     (roast_date, user_id) [pk]
-    user_id
+    dr_user
   }
 }
 
@@ -302,6 +344,10 @@ Ref: ivp_comments.commented_on > interview_prep.post_id [delete: cascade]
 Ref: ivp_comments.commented_by > users.id
 Ref: jobboard.posted_by > users.id
 Ref: daily_roasts.user_id > users.id
+Ref: communities.created_by > users.id
+Ref: community_members.community_id > communities.community_id [delete: cascade]
+Ref: community_members.user_id > users.id [delete: cascade]
+Ref: user_notes.user_id > users.id [delete: cascade]
 ```
 
 ## Feature List
