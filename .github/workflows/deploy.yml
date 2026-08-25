@@ -1,0 +1,18 @@
+name: Deploy jobless
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, homelab]
+    environment: production
+    concurrency:
+      group: deploy-jobless
+      cancel-in-progress: false
+    steps:
+      - name: Run deploy-jobless script on runner host
+        run: /home/pxndey/scripts/deploy-jobless.sh
+        timeout-minutes: 30
