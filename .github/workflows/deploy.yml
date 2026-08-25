@@ -8,7 +8,6 @@ on:
 jobs:
   deploy:
     runs-on: [self-hosted, Linux, X64]
-    environment: production
     concurrency:
       group: deploy-jobless
       cancel-in-progress: false
