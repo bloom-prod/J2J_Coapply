@@ -7,7 +7,7 @@
  * Requires Node 20.6+ (process.loadEnvFile) and uses the repo root's deps
  * (`postgres`, `nodemailer`) — no per-module node_modules.
  *
- * Setup:  put DATABASE_URL + SMTP_* (+ optional GROQ key) in cron/daily-email/.env
+ * Setup:  put DATABASE_URL + SMTP_* (+ optional OPENROUTER_API_KEY) in cron/daily-email/.env
  * Run:    node cron/daily-email/daily-email.js            (sends email)
  *         node cron/daily-email/daily-email.js --dry-run  (print, don't send)
  * Cron:   schedule daily at ~6 AM EST
@@ -54,8 +54,7 @@ const nodemailer = require("nodemailer");
 
 // ── Config ──────────────────────────────────────────────────────────────
 const DATABASE_URL = process.env.DATABASE_URL;
-// GROQ_API_MODEL is a legacy misnomer that holds the API key (see lib/gemini.ts).
-const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.GROQ_API_MODEL || "";
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
 const SMTP_HOST = process.env.SMTP_HOST;
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587", 10);
 const SMTP_USER = process.env.SMTP_USER;
@@ -143,31 +142,45 @@ function summaryLine(u) {
   return parts.length ? parts.join(", ") : "did absolutely nothing";
 }
 
-// ── Groq LLM ────────────────────────────────────────────────────────────
-async function callGroq(systemPrompt, userPrompt) {
-  if (!GROQ_API_KEY) return null;
+// ── LLM ─────────────────────────────────────────────────────────────────
+// OpenAI-compatible calls via OpenRouter (deepseek).
+
+async function postChat({ endpoint, token, model, systemPrompt, userPrompt }) {
+  if (!token) return null;
+  let res;
   try {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    res = await fetch(endpoint, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+        model,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
         temperature: 0.9,
         max_tokens: 400,
+        reasoning: { enabled: true },
       }),
     });
-    if (res.status === 429) { console.error("  Groq 429 rate limit"); return null; }
-    if (!res.ok) { console.error(`  Groq ${res.status}:`, await res.text()); return null; }
-    const data = await res.json();
-    return data?.choices?.[0]?.message?.content?.trim() || null;
   } catch (err) {
-    console.error("  Groq error:", err.message);
+    console.error(`  ${model} error:`, err.message);
     return null;
   }
+  if (res.status === 429) { console.error(`  ${model} 429 rate limit`); return null; }
+  if (!res.ok) { console.error(`  ${model} ${res.status}:`, await res.text()); return null; }
+  const data = await res.json();
+  return data?.choices?.[0]?.message?.content?.trim() || null;
+}
+
+async function callLLM(systemPrompt, userPrompt) {
+  return postChat({
+    endpoint: "https://openrouter.ai/api/v1/chat/completions",
+    token: OPENROUTER_API_KEY,
+    model: "deepseek/deepseek-v4-flash-0731",
+    systemPrompt,
+    userPrompt,
+  });
 }
 
 /** LLM writes only subject + note; jobs ALWAYS come from the real jobboard. */
@@ -187,7 +200,7 @@ Available jobs they could apply to today:
 ${jobLines}
 Roast them and tell them to apply.`;
 
-  const raw = await callGroq(systemPrompt, userPrompt);
+  const raw = await callLLM(systemPrompt, userPrompt);
   if (!raw) return null;
   try {
     const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();

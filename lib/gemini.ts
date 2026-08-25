@@ -13,16 +13,14 @@ interface LLMProvider {
 function getProviders(): LLMProvider[] {
   const providers: LLMProvider[] = [];
 
-  // GROQ_API_MODEL is a legacy misnomer — it holds the API key, not a model
-  // name, and it's what .env.local currently defines. Prefer the correctly
-  // named var so the env can be renamed without touching code.
-  const groqToken = process.env.GROQ_API_KEY || process.env.GROQ_API_MODEL || "";
-  if (groqToken) {
+  // OpenRouter primary — OpenAI-compatible, reachable via the OPENROUTER_API_KEY.
+  const openRouterToken = process.env.OPENROUTER_API_KEY || "";
+  if (openRouterToken) {
     providers.push({
-      name: "Groq",
-      endpoint: "https://api.groq.com/openai/v1/chat/completions",
-      model: "llama-3.3-70b-versatile",
-      token: groqToken,
+      name: "OpenRouter",
+      endpoint: "https://openrouter.ai/api/v1/chat/completions",
+      model: "deepseek/deepseek-v4-flash-0731",
+      token: openRouterToken,
     });
   }
 
@@ -50,6 +48,7 @@ async function callLLM(
         ],
         temperature: 1.0,
         max_tokens: maxTokens,
+        reasoning: { enabled: true },
       }),
     });
 
@@ -117,7 +116,6 @@ Rules:
 
 /**
  * Generates roasts for ALL users in a single API call.
- * Tries GitHub Models first, falls back to Groq.
  */
 export async function generateRoasts(users: UserApps[]): Promise<Record<string, string>> {
   const fallback = buildFallback(users);
