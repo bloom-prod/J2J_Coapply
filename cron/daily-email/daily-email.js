@@ -169,7 +169,16 @@ async function postChat({ endpoint, token, model, systemPrompt, userPrompt }) {
   if (res.status === 429) { console.error(`  ${model} 429 rate limit`); return null; }
   if (!res.ok) { console.error(`  ${model} ${res.status}:`, await res.text()); return null; }
   const data = await res.json();
-  return data?.choices?.[0]?.message?.content?.trim() || null;
+  const content = data?.choices?.[0]?.message?.content?.trim() || null;
+  if (!content) {
+    const finish = data?.choices?.[0]?.finish_reason;
+    const usage = data?.usage;
+    const reasoning = data?.choices?.[0]?.message?.reasoning;
+    console.error(
+      `  ${model} empty content (finish=${finish}, usage=${JSON.stringify(usage)}) reasoning=${reasoning ? reasoning.slice(0, 200) : "none"}`,
+    );
+  }
+  return content;
 }
 
 async function callLLM(systemPrompt, userPrompt) {
@@ -200,10 +209,14 @@ ${jobLines}
 Roast them and tell them to apply.`;
 
   const raw = await callLLM(systemPrompt, userPrompt);
-  if (!raw) return null;
+  if (!raw) {
+    console.log(`  [LLM] email for "${name}" FAILED — using fallback`);
+    return null;
+  }
   try {
     const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
     const parsed = JSON.parse(cleaned);
+    console.log(`  [LLM] email for "${name}" generated: subject="${parsed.subject}"`);
     return { subject: parsed.subject, note: parsed.note };
   } catch {
     console.error("  Failed to parse LLM response:", raw);
@@ -339,8 +352,8 @@ async function main() {
         subject: content.subject || "Your daily job hunt update",
         html,
       });
-      console.log(`  Sent -> ${user.email} (${name})`);
-      logEvent("info", "email.sent", { to: user.email, name, subject: content.subject, summary });
+      console.log(`  Sent -> ${user.email} (${name}) | "${content.subject}" | ${content.note}`);
+      logEvent("info", "email.sent", { to: user.email, name, subject: content.subject, note: content.note, summary });
       sent++;
     } catch (err) {
       console.error(`  FAILED -> ${user.email}:`, err.message);
