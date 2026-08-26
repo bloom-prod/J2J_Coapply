@@ -230,6 +230,7 @@ export default function Page() {
         onOpenChange={setImportOpen}
         existingJobs={bloom.myJobs}
         onImport={bloom.bulkCreateJobs}
+        onBulkUpdate={bloom.bulkUpdateJobs}
       />
 
       <ShamePopup />

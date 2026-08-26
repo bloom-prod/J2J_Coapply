@@ -22,6 +22,8 @@ export interface ParsedRow {
   data: Record<string, string>;
   warnings: string[];
   duplicate: boolean;
+  existingId?: string; // ID of existing application if this is an update
+  isUpdate: boolean; // True if this row should update an existing application
 }
 
 export type RawRow = (string | number | null | undefined)[];
@@ -76,7 +78,7 @@ function foldNotes(raw: RawRow): string {
 export function mapRow(
   raw: RawRow,
   rowIndex: number,
-  existingKeys: Set<string>
+  existingKeys: Map<string, string> // Changed from Set to Map<key, id>
 ): ParsedRow {
   const warnings: string[] = [];
   const company = String(raw[0] ?? "").trim();
@@ -92,6 +94,7 @@ export function mapRow(
       data: {},
       warnings: ["Empty row — skipped"],
       duplicate: false,
+      isUpdate: false,
     };
   }
 
@@ -120,12 +123,14 @@ export function mapRow(
     notes,
   };
 
-  const duplicate = company
-    ? existingKeys.has(jobKey({ company, role, url }))
-    : false;
-  if (duplicate) warnings.push("Duplicate of existing application");
+  const key = jobKey({ company, role, url });
+  const existingId = company ? existingKeys.get(key) : undefined;
+  const isUpdate = !!existingId;
+  const duplicate = isUpdate;
 
-  return { rowIndex, data, warnings, duplicate };
+  if (duplicate) warnings.push("Existing application — will update status");
+
+  return { rowIndex, data, warnings, duplicate, existingId, isUpdate };
 }
 
 export function findHeaderRow(rows: RawRow[]): number {
@@ -144,8 +149,8 @@ export function parseSheet(
 ): { headerRow: number; parsed: ParsedRow[] } {
   const headerIdx = findHeaderRow(rows);
   const dataRows = headerIdx >= 0 ? rows.slice(headerIdx + 1) : rows;
-  const existingKeys = new Set(
-    existingJobs.map((j) => jobKey({ company: j.company, role: j.role, url: j.url }))
+  const existingKeys = new Map(
+    existingJobs.map((j) => [jobKey({ company: j.company, role: j.role, url: j.url }), j.id])
   );
   const parsed: ParsedRow[] = [];
   dataRows.forEach((r, i) => {

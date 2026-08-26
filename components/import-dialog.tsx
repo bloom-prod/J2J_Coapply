@@ -19,11 +19,13 @@ export function ImportDialog({
   onOpenChange,
   existingJobs,
   onImport,
+  onBulkUpdate,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   existingJobs: Job[];
   onImport: (rows: Record<string, string>[]) => Promise<void>;
+  onBulkUpdate?: (updates: Array<{ id: string; status: string }>) => Promise<void>;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [parsing, setParsing] = useState(false);
@@ -78,8 +80,9 @@ export function ImportDialog({
   const stats = parsed
     ? {
         total: parsed.length,
-        duplicates: parsed.filter((r) => r.duplicate).length,
-        warnings: parsed.filter((r) => r.warnings.length > 0 && !r.duplicate).length,
+        creates: parsed.filter((r) => !r.isUpdate).length,
+        updates: parsed.filter((r) => r.isUpdate).length,
+        warnings: parsed.filter((r) => r.warnings.length > 0).length,
         selected: selected.size,
       }
     : null;
@@ -95,13 +98,34 @@ export function ImportDialog({
 
   async function doImport() {
     if (!parsed || selected.size === 0) return;
-    const rows = parsed
-      .filter((_, i) => selected.has(i))
-      .map((p) => p.data);
+    const selected_rows = parsed.filter((_, i) => selected.has(i));
+
+    // Separate into creates and updates
+    const creates = selected_rows.filter((p) => !p.isUpdate).map((p) => p.data);
+    const updates = selected_rows
+      .filter((p) => p.isUpdate && p.existingId)
+      .map((p) => ({ id: p.existingId!, status: p.data.status }));
+
     setImporting(true);
     try {
-      await onImport(rows);
-      toast.success(`Imported ${rows.length} applications 🌸`);
+      let created = 0;
+      let updated = 0;
+
+      if (creates.length > 0) {
+        await onImport(creates);
+        created = creates.length;
+      }
+
+      if (updates.length > 0 && onBulkUpdate) {
+        await onBulkUpdate(updates);
+        updated = updates.length;
+      }
+
+      const parts = [];
+      if (created > 0) parts.push(`Created ${created} application${created > 1 ? "s" : ""}`);
+      if (updated > 0) parts.push(`Updated ${updated} status${updated > 1 ? "es" : ""}`);
+
+      toast.success((parts.length ? parts.join(" + ") : "Done") + " 🌸");
       onOpenChange(false);
       reset();
     } catch (e) {
@@ -192,14 +216,19 @@ export function ImportDialog({
               <span>
                 <strong>{stats.total}</strong> rows parsed
               </span>
-              <span style={{ color: "var(--text-mid)" }}>
-                <strong>{stats.selected}</strong> selected to import
-              </span>
-              {stats.duplicates > 0 && (
-                <span style={{ color: "var(--warning, #C77E2A)" }}>
-                  {stats.duplicates} duplicate{stats.duplicates > 1 ? "s" : ""}
+              {stats.creates > 0 && (
+                <span style={{ color: "var(--success)" }}>
+                  <strong>{stats.creates}</strong> new application{stats.creates > 1 ? "s" : ""}
                 </span>
               )}
+              {stats.updates > 0 && (
+                <span style={{ color: "var(--pink-600)" }}>
+                  <strong>{stats.updates}</strong> status update{stats.updates > 1 ? "s" : ""}
+                </span>
+              )}
+              <span style={{ color: "var(--text-mid)" }}>
+                <strong>{stats.selected}</strong> selected
+              </span>
               {stats.warnings > 0 && (
                 <span style={{ color: "var(--text-light)" }}>
                   {stats.warnings} with warnings
@@ -237,11 +266,12 @@ export function ImportDialog({
                       />
                     </th>
                     <th style={{ width: 50 }}>#</th>
-                    <th style={{ width: "16%" }}>Company</th>
-                    <th style={{ width: "22%" }}>Role</th>
+                    <th style={{ width: "12%" }}>Company</th>
+                    <th style={{ width: "20%" }}>Role</th>
                     <th style={{ width: "10%" }}>Status</th>
                     <th style={{ width: "10%" }}>Date</th>
-                    <th style={{ width: "20%" }}>URL</th>
+                    <th style={{ width: "10%" }}>Type</th>
+                    <th style={{ width: "18%" }}>URL</th>
                     <th>Notes / Warnings</th>
                   </tr>
                 </thead>
@@ -273,6 +303,18 @@ export function ImportDialog({
                         </td>
                         <td><span className={`pill s-${(r.data.status || "Applied").replace(/\s+/g, "-")}`}>{r.data.status || "Applied"}</span></td>
                         <td style={{ color: "var(--text-light)", whiteSpace: "nowrap" }}>{r.data.date || "—"}</td>
+                        <td>
+                          <span style={{
+                            padding: "2px 6px",
+                            borderRadius: 4,
+                            fontSize: 11,
+                            fontWeight: 500,
+                            background: r.isUpdate ? "rgba(224, 123, 160, 0.1)" : "rgba(107, 158, 107, 0.1)",
+                            color: r.isUpdate ? "var(--pink-600)" : "var(--success)"
+                          }}>
+                            {r.isUpdate ? "Update" : "Create"}
+                          </span>
+                        </td>
                         <td style={{ maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {r.data.url ? (
                             <a href={safeHttpUrl(r.data.url)} target="_blank" rel="noreferrer" style={{ color: "var(--info)", textDecoration: "none", fontSize: 11 }}>
