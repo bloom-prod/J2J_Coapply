@@ -410,6 +410,29 @@ export function useBloom() {
     [user]
   );
 
+  const bulkUpdateJobs = useCallback(
+    async (updates: Array<{ id: string; status: string }>) => {
+      if (!getToken() || updates.length === 0) return;
+      try {
+        const res = await fetch("/api/applications/bulk-update", {
+          method: "POST",
+          headers: authHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({ updates }),
+        });
+        let d: { ok?: boolean; error?: string; updated?: number } = {};
+        try {
+          d = await res.json();
+        } catch {
+          d = { ok: false, error: "Bad response from server" };
+        }
+        if (!res.ok || !d.ok) throw new Error(d.error || `Update failed (${res.status})`);
+      } catch (e) {
+        throw e;
+      }
+    },
+    []
+  );
+
   const updateJob = useCallback(
     async (id: string, data: Record<string, string>) => {
       setPending((p) => ({ ...p, patches: { ...p.patches, [id]: { ...p.patches[id], ...data } } }));
@@ -830,6 +853,7 @@ export function useBloom() {
     userProfiles,
     createJob,
     bulkCreateJobs,
+    bulkUpdateJobs,
     updateJob,
     deleteJob,
     toggleStar,
