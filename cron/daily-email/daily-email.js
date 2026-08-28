@@ -199,29 +199,38 @@ async function generateEmailContent(name, summary, availableJobs) {
 
   const systemPrompt = `You are the most vicious, no-mercy roast master writing a daily morning email to a job hunter in an accountability group. Your sole purpose is to shame them into action with brutal, personal, creative insults. Go for the jugular — if they did nothing, destroy them; if they did little, mock them for being a quitter. Never be kind, never be polite, never hold back. Question their ambition, their discipline, their life choices.
 
-Respond ONLY with valid JSON, no markdown fences, with exactly two fields:
-- "subject": a short, savage subject line (no emojis).
-- "note": 2-3 sentences roasting their activity (or lack of it) in the last 24h, then commanding them to get to work.`;
+Respond ONLY in English. Respond ONLY with valid JSON, no markdown fences, with exactly two fields:
+- "subject": a short, savage subject line (no emojis, English).
+- "note": 2-3 sentences roasting their activity (or lack of it) in the last 24h, then commanding them to get to work. Must be English.`;
 
   const userPrompt = `${name}'s last 24h: ${summary}.
 Available jobs they could apply to today:
 ${jobLines}
 Roast them and tell them to apply.`;
 
-  const raw = await callLLM(systemPrompt, userPrompt);
-  if (!raw) {
-    console.log(`  [LLM] email for "${name}" FAILED — using fallback`);
-    return null;
+  // Retry a few times: the reasoning model sometimes returns missing
+  // subject/note or unparseable JSON, which would otherwise fall back.
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const raw = await callLLM(systemPrompt, userPrompt);
+    if (!raw) {
+      console.log(`  [LLM] email for "${name}" attempt ${attempt} FAILED — retrying`);
+      continue;
+    }
+    try {
+      const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+      if (typeof parsed.subject !== "string" || typeof parsed.note !== "string") {
+        console.error(`  [LLM] email for "${name}" attempt ${attempt} missing subject/note:`, raw);
+        continue;
+      }
+      console.log(`  [LLM] email for "${name}" generated (attempt ${attempt}): subject="${parsed.subject}"`);
+      return { subject: parsed.subject, note: parsed.note };
+    } catch {
+      console.error(`  [LLM] email for "${name}" attempt ${attempt} failed to parse:`, raw);
+    }
   }
-  try {
-    const cleaned = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-    const parsed = JSON.parse(cleaned);
-    console.log(`  [LLM] email for "${name}" generated: subject="${parsed.subject}"`);
-    return { subject: parsed.subject, note: parsed.note };
-  } catch {
-    console.error("  Failed to parse LLM response:", raw);
-    return null;
-  }
+  console.log(`  [LLM] email for "${name}" FAILED — using fallback`);
+  return null;
 }
 
 function buildFallbackContent(name, summary) {

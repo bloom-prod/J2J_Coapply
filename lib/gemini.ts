@@ -134,16 +134,19 @@ export async function generateSingleRoast(name: string, appsToday: number): Prom
 
   if (getProviders().length === 0) return fallback;
 
-  const result = await callWithFallback(
-    "You are the most vicious, no-mercy roast master in a job-hunting accountability group. Your sole purpose is to emotionally demolish lazy job seekers and make them feel genuine, burning shame. Be cruel, creative, and personal — go for the jugular. Compare them to the laziest, most pathetic things imaginable. Question their ambition, their discipline, their entire life trajectory. If they applied to zero jobs, annihilate them without mercy. If they barely tried, mock them relentlessly for being a quitter. Never be kind, never be polite, never hold back. Generate a single devastating roast (1-2 sentences, minimum 10 words). No hashtags. No emojis. No markdown. Use the exact name as given.",
-    `"${name}" just hit ${appsToday} apps today! Hype them up while roasting the rest of the group for being lazy.`,
-  );
+  const sysPrompt =
+    "You are the most vicious, no-mercy roast master in a job-hunting accountability group. Your sole purpose is to emotionally demolish lazy job seekers and make them feel genuine, burning shame. Be cruel, creative, and personal — go for the jugular. Compare them to the laziest, most pathetic things imaginable. Question their ambition, their discipline, their entire life trajectory. If they applied to zero jobs, annihilate them without mercy. If they barely tried, mock them relentlessly for being a quitter. Never be kind, never be polite, never hold back. Respond ONLY in English. Generate a single devastating roast (1-2 sentences, minimum 10 words). No hashtags. No emojis. No markdown. Use the exact name as given.";
+  const userPrompt = `"${name}" just hit ${appsToday} apps today! Hype them up while roasting the rest of the group for being lazy.`;
 
-  if (result) {
-    console.log(`[LLM] roast for "${name}" (${appsToday} apps): ${result.slice(0, 200)}`);
-  } else {
-    console.warn(`[LLM] roast for "${name}" (${appsToday} apps) FAILED — using fallback: ${fallback}`);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const result = await callWithFallback(sysPrompt, userPrompt);
+    if (result) {
+      console.log(`[LLM] roast for "${name}" (${appsToday} apps) attempt ${attempt}: ${result.slice(0, 200)}`);
+      return result;
+    }
+    console.warn(`[LLM] roast for "${name}" (${appsToday} apps) attempt ${attempt} FAILED`);
   }
 
-  return result || fallback;
+  console.warn(`[LLM] roast for "${name}" (${appsToday} apps) FAILED — using fallback: ${fallback}`);
+  return fallback;
 }
