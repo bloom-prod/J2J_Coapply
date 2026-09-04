@@ -99,6 +99,9 @@ export function DiscoverTab({
   const dark = useDarkMode();
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"recent" | "popular" | "alpha">("recent");
+  // When on, only roles somebody saved a posting link for are shown — the rest
+  // are dead ends you can't actually apply to from here.
+  const [linkedOnly, setLinkedOnly] = useState(false);
   // Company keys whose full role list is showing (session-only, unlike dismissals).
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -197,11 +200,16 @@ export function DiscoverTab({
       }
 
       // Most recently applied role first; undated roles sink to the bottom.
-      entry.roles = [...byRole.values()].sort(
-        (a, b) =>
-          b.latestApplied.localeCompare(a.latestApplied) ||
-          a.role.localeCompare(b.role)
-      );
+      entry.roles = [...byRole.values()]
+        .filter((r) => !linkedOnly || r.url)
+        .sort(
+          (a, b) =>
+            b.latestApplied.localeCompare(a.latestApplied) ||
+            a.role.localeCompare(b.role)
+        );
+
+      // A company whose every role lost its link has nothing left to show.
+      if (linkedOnly && entry.roles.length === 0) continue;
 
       map.set(key, entry);
     }
@@ -232,7 +240,7 @@ export function DiscoverTab({
     }
 
     return list;
-  }, [allJobs, myCompanyNames, dismissed, search, sortBy]);
+  }, [allJobs, myCompanyNames, dismissed, search, sortBy, linkedOnly]);
 
   return (
     <div>
@@ -262,6 +270,24 @@ export function DiscoverTab({
               <SelectItem value="alpha">A &rarr; Z</SelectItem>
             </SelectContent>
           </Select>
+          <button
+            type="button"
+            className={"chip" + (linkedOnly ? " active" : "")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              height: "2.25rem",
+              padding: "0 14px",
+              borderRadius: 9999,
+            }}
+            aria-pressed={linkedOnly}
+            onClick={() => setLinkedOnly((v) => !v)}
+            title="Only show roles somebody saved a posting link for"
+          >
+            <i className={"ti " + (linkedOnly ? "ti-link" : "ti-link-off")} />
+            Has link
+          </button>
         </div>
         <span style={{ fontSize: 13, color: "var(--text-light)", whiteSpace: "nowrap" }}>
           {discoveries.length} {discoveries.length === 1 ? "company" : "companies"}
@@ -272,14 +298,16 @@ export function DiscoverTab({
         <div className="empty">
           <div className="empty-icon">🔍</div>
           <div className="empty-title">
-            {search
+            {search || linkedOnly
               ? "No matches found"
               : "You've covered all the companies!"}
           </div>
           <div style={{ fontSize: 13 }}>
             {search
               ? "Try a different search term."
-              : "Everyone's applied to the same companies as you — nice coverage!"}
+              : linkedOnly
+                ? "Nobody saved a posting link for the roles left — turn off “Has link” to see them."
+                : "Everyone's applied to the same companies as you — nice coverage!"}
           </div>
         </div>
       ) : (
