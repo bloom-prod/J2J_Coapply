@@ -16,6 +16,8 @@ services:
       - "traefik.http.routers.j2j.entrypoints=web"
       - "traefik.http.services.j2j.loadbalancer.server.port=3000"
     restart: unless-stopped
+    volumes:
+      - /storage/pxndey/logs:/storage/pxndey/logs
     networks:
       - jobless
       - proxy

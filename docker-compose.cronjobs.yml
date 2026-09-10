@@ -4,8 +4,8 @@
 # env_file (NOT baked into the image).
 #
 # These run once per invocation — schedule them with the host's crontab, e.g.:
-#   0  *  * * *  docker compose -f /home/pxndey/srv/jobless/docker-compose.cronjobs.yml run --rm sync-leetcode
-#   0  6  * * *  docker compose -f /home/pxndey/srv/jobless/docker-compose.cronjobs.yml run --rm daily-email
+#   0  *  * * *  docker compose -f /storage/pxndey/srv/jobless/docker-compose.cronjobs.yml run --rm sync-leetcode
+#   0  6  * * *  docker compose -f /storage/pxndey/srv/jobless/docker-compose.cronjobs.yml run --rm daily-email
 #
 # Build the shared image once:  docker compose -f docker-compose.cronjobs.yml build
 services:
