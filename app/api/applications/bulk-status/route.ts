@@ -16,7 +16,12 @@ export const dynamic = "force-dynamic";
  * Move many applications to one status in a single call — the shape an agent
  * needs to close out a batch of rejections without one PUT per row.
  *
- * POST { ids: string[], status?: Status }  ->  { ok, status, updated, results }
+ * POST { ids: string[], status?: Status, dryRun?: boolean }
+ *   ->  { ok, status, dryRun, updated, results }
+ *
+ * `dryRun` resolves and reports every id without writing anything, so a caller
+ * matching rejection emails to rows by fuzzy company/role can show its work
+ * before it touches the tracker.
  *
  * `status` defaults to "Rejected", the case this exists for. Unlike PUT
  * /api/applications, an unrecognized status is a 400 rather than a silent
@@ -27,8 +32,12 @@ export const dynamic = "force-dynamic";
 
 const MAX_IDS = 500;
 
-/** Per-id outcome, so a partial batch tells the caller exactly what happened. */
-type Outcome = "updated" | "unchanged" | "not_found" | "forbidden";
+/**
+ * Per-id outcome, so a partial batch tells the caller exactly what happened.
+ * A dry run reports "would_update" where a real call reports "updated"; every
+ * other outcome reads the same either way.
+ */
+type Outcome = "updated" | "would_update" | "unchanged" | "not_found" | "forbidden";
 
 function fail(status: number, error: string) {
   return NextResponse.json({ ok: false, error }, { status });
@@ -50,6 +59,7 @@ export async function POST(req: Request) {
       throw new HttpError(400, `Unknown status '${statusDisplay}'. Expected one of: ${STATUSES.join(", ")}`);
     }
     const statusEnum = statusToEnum(statusDisplay)!;
+    const dryRun = body.dryRun === true || body.dryRun === "true";
 
     const rows = await db
       .select({
@@ -63,7 +73,9 @@ export async function POST(req: Request) {
       .where(inArray(applications.applicationId, ids));
     const byId = new Map(rows.map((r) => [r.applicationId, r]));
 
-    const results: { id: string; result: Outcome }[] = [];
+    // Company and role ride along on every row so a caller that guessed at ids
+    // can check it aimed at the application it meant to.
+    const results: { id: string; result: Outcome; company?: string; role?: string }[] = [];
     const toUpdate: typeof rows = [];
     for (const id of ids) {
       const row = byId.get(id);
@@ -75,14 +87,19 @@ export async function POST(req: Request) {
         // else's row doesn't strand the rest.
         results.push({ id, result: "forbidden" });
       } else if (row.status === statusEnum) {
-        results.push({ id, result: "unchanged" });
+        results.push({ id, result: "unchanged", company: row.company, role: row.role });
       } else {
-        results.push({ id, result: "updated" });
+        results.push({
+          id,
+          result: dryRun ? "would_update" : "updated",
+          company: row.company,
+          role: row.role,
+        });
         toUpdate.push(row);
       }
     }
 
-    if (toUpdate.length) {
+    if (toUpdate.length && !dryRun) {
       const now = new Date();
       const changedIds = toUpdate.map((r) => r.applicationId);
       await db.transaction(async (tx) => {
@@ -122,7 +139,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       status: statusDisplay,
-      updated: toUpdate.length,
+      dryRun,
+      updated: dryRun ? 0 : toUpdate.length,
       results,
     });
   } catch (err) {
