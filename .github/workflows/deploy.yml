@@ -14,7 +14,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Run deploy-jobless script on runner host
-        run: /home/pxndey/scripts/deploy-jobless.sh
+        run: /storage/pxndey/scripts/deploy-jobless.sh
         timeout-minutes: 30
       - name: Set deployment URL
         if: always()
