@@ -18,8 +18,8 @@ function prettyAuthError(e: unknown): string {
   return msg || "Something went wrong.";
 }
 
-export function AuthScreen() {
-  const [mode, setMode] = useState<"login" | "signup">("login");
+export function AuthScreen({ initialMode = "login", onBack }: { initialMode?: "login" | "signup"; onBack?: () => void } = {}) {
+  const [mode, setMode] = useState<"login" | "signup">(initialMode);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -150,6 +150,16 @@ export function AuthScreen() {
           >
             Forgot password?
           </Link>
+        )}
+
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            style={{ display: "block", width: "100%", textAlign: "center", fontSize: 13, color: "var(--text-light)", marginTop: 10 }}
+          >
+            ← Back to home
+          </button>
         )}
 
         <div className="auth-hint">

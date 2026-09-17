@@ -1,7 +1,12 @@
 import type { Metadata, Viewport } from "next";
+import { Fraunces, Instrument_Sans } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { RegisterSW } from "@/components/register-sw";
+
+// Display + body faces for the landing page, exposed as CSS variables.
+const display = Fraunces({ subsets: ["latin"], style: ["normal", "italic"], variable: "--font-display", display: "swap" });
+const body = Instrument_Sans({ subsets: ["latin"], variable: "--font-body", display: "swap" });
 
 export const metadata: Metadata = {
   title: "bloom tracker 🌿",
@@ -28,7 +33,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={`${display.variable} ${body.variable}`} suppressHydrationWarning>
       <head>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/icon-192x192.png" />
