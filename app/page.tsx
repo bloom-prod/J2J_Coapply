@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useBloom } from "@/hooks/use-bloom";
 import { AuthScreen } from "@/components/auth-screen";
+import { LandingPage } from "@/components/landing-page";
 import { TrackerTab } from "@/components/tracker-tab";
 import { InsightsTab } from "@/components/insights-tab";
 import { CommunityTab } from "@/components/community-tab";
@@ -49,6 +50,8 @@ export default function Page() {
   const [prefill, setPrefill] = useState<Record<string, string> | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  // Logged-out visitors land on the marketing page; picking log in / sign up swaps to the auth card.
+  const [authMode, setAuthMode] = useState<"login" | "signup" | null>(null);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -65,7 +68,10 @@ export default function Page() {
   }, [bloom.user]);
 
   if (!bloom.authReady) return <FullSpinner />;
-  if (!bloom.user) return <AuthScreen />;
+  if (!bloom.user) {
+    if (!authMode) return <LandingPage onAuth={setAuthMode} />;
+    return <AuthScreen key={authMode} initialMode={authMode} onBack={() => setAuthMode(null)} />;
+  }
 
   function openAdd() {
     setEditing(null);
